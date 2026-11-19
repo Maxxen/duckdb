@@ -578,8 +578,6 @@ unique_ptr<FunctionData> MinMaxNBind(BindAggregateFunctionInput &input) {
 
 	// Specialize the function based on the input types
 	SpecializeMinMaxNFunction<COMPARATOR>(val_type, function);
-
-	function.SetReturnType(LogicalType::LIST(arguments[0]->GetReturnType()));
 	return nullptr;
 }
 

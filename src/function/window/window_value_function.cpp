@@ -197,11 +197,7 @@ struct WindowValueExecutor {
 };
 
 unique_ptr<FunctionData> WindowValueExecutor::Bind(BindWindowFunctionInput &input) {
-	auto &function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-
-	function.SetReturnType(arguments[0]->GetReturnType());
-
+	// the value is returned as the type the signature declares
 	return nullptr;
 }
 

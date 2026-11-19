@@ -233,46 +233,42 @@ static unique_ptr<Expression> BindCRSFunctionExpression(FunctionBindExpressionIn
 	return make_uniq<BoundConstantExpression>(GetCRSValue(return_type));
 }
 
-static void CRSFunctionResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &argument_type = input.GetArgumentType(0);
-	if (argument_type.id() != LogicalTypeId::GEOMETRY) {
-		return;
+ScalarFunctionSet StCrsFun::GetFunctions() {
+	ScalarFunctionSet set("st_crs");
+	// a geometry of a coordinate reference system is taken as it is: the system is part of its type
+	ScalarFunction crs_func(FunctionSignature()
+	                            .AddVariable("C", TypeVariable::Kind::STRING)
+	                            .AddParameter("geom", TypeName(Identifier("GEOMETRY"), {TypeName::VARIABLE("C")}))
+	                            .SetReturnType(LogicalType::VARCHAR),
+	                        CRSFunction);
+	// a geometry without one has none to return
+	ScalarFunction geom_func(
+	    FunctionSignature().AddParameter("geom", LogicalType::GEOMETRY()).SetReturnType(LogicalType::VARCHAR),
+	    CRSFunction);
+	for (auto function : {crs_func, geom_func}) {
+		function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
+		function.SetBindExpressionCallback(BindCRSFunctionExpression);
+		set.AddFunction(std::move(function));
 	}
-
-	// Propagate the CRS from the input argument to the parameter type
-	input.GetBoundFunction().GetArguments()[0] = argument_type;
+	return set;
 }
 
-ScalarFunction StCrsFun::GetFunction() {
-	ScalarFunction geom_func({}, LogicalType::VARCHAR, CRSFunction);
-	geom_func.SetResolveTypesCallback(CRSFunctionResolveTypes);
-	geom_func.GetSignature().AddParameter("geom", LogicalType::GEOMETRY());
-	geom_func.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
-	geom_func.SetBindExpressionCallback(BindCRSFunctionExpression);
-	return geom_func;
-}
-
-static unique_ptr<FunctionData> SetCRSBind(BindScalarFunctionInput &input) {
-	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-
-	// Check if the CRS is set in the second argument
+//! The geometry of the coordinate reference system the constant second argument names
+static LogicalType SetCRSReturnType(const ResolveReturnTypeInput &input) {
 	const auto crs_val = input.GetConstant(1);
 	if (crs_val.IsNull()) {
-		return nullptr;
+		return LogicalType::GEOMETRY();
 	}
 
 	const auto &crs_str = StringValue::Get(crs_val);
 
 	// Try to convert to identify
-	const auto lookup = CoordinateReferenceSystem::TryIdentify(context, crs_str);
+	const auto lookup = CoordinateReferenceSystem::TryIdentify(input.GetClientContext(), crs_str);
 	if (lookup) {
-		bound_function.SetReturnType(LogicalType::GEOMETRY(lookup->GetDefinition()));
-	} else {
-		// Pass on the raw string (better than nothing)
-		bound_function.SetReturnType(LogicalType::GEOMETRY(crs_str));
+		return LogicalType::GEOMETRY(lookup->GetDefinition());
 	}
-	return nullptr;
+	// Pass on the raw string (better than nothing)
+	return LogicalType::GEOMETRY(crs_str);
 }
 
 static void SetCRSFunction(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -280,7 +276,7 @@ static void SetCRSFunction(DataChunk &args, ExpressionState &state, Vector &resu
 }
 
 ScalarFunction StSetcrsFun::GetFunction() {
-	ScalarFunction geom_func({}, LogicalType::GEOMETRY(), SetCRSFunction, SetCRSBind);
+	ScalarFunction geom_func({}, ReturnType::ANY(SetCRSReturnType), SetCRSFunction);
 	geom_func.GetSignature().AddParameter("geom", LogicalType::GEOMETRY()).AddParameter("crs", LogicalType::VARCHAR);
 	return geom_func;
 }

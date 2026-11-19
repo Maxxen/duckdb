@@ -587,7 +587,6 @@ unique_ptr<FunctionData> ApproxTopKBind(BindAggregateFunctionInput &input) {
 	}
 	// resolve the (originally ANY) value argument type so the exported state layout uses the actual input type
 	function.GetArguments()[0] = arguments[0]->GetReturnType();
-	function.SetReturnType(LogicalType::LIST(arguments[0]->GetReturnType()));
 	return nullptr;
 }
 

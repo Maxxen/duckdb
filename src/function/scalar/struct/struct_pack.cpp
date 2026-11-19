@@ -44,25 +44,21 @@ static void StructPackFunction(DataChunk &args, ExpressionState &state, Vector &
 	result.Verify();
 }
 
+//! The struct of the arguments: struct_pack names its fields after them, row leaves them unnamed
 template <bool IS_STRUCT_PACK>
-static unique_ptr<FunctionData> StructPackBind(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &args = input.GetArguments();
-
+static LogicalType StructPackReturnType(const ResolveReturnTypeInput &input) {
 	if (IS_STRUCT_PACK) {
 		child_list_t<LogicalType> fields;
-		for (idx_t i = 0; i < args.size(); i++) {
-			fields.emplace_back(input.GetArgumentName(i), args[i]->GetReturnType());
+		for (idx_t i = 0; i < input.GetArgumentCount(); i++) {
+			fields.emplace_back(input.GetArgumentName(i), input.GetArgument(i).GetReturnType());
 		}
-		bound_function.SetReturnType(LogicalType::STRUCT(std::move(fields)));
-	} else {
-		vector<LogicalType> fields;
-		for (idx_t i = 0; i < args.size(); i++) {
-			fields.push_back(args[i]->GetReturnType());
-		}
-		bound_function.SetReturnType(LogicalType::TUPLE(std::move(fields)));
+		return LogicalType::STRUCT(std::move(fields));
 	}
-	return make_uniq<VariableReturnBindData>(bound_function.GetReturnType());
+	vector<LogicalType> fields;
+	for (idx_t i = 0; i < input.GetArgumentCount(); i++) {
+		fields.push_back(input.GetArgument(i).GetReturnType());
+	}
+	return LogicalType::TUPLE(std::move(fields));
 }
 
 static unique_ptr<BaseStatistics> StructPackStats(ClientContext &context, FunctionStatisticsInput &input) {
@@ -90,7 +86,7 @@ static unique_ptr<ParsedExpression> StructPackUnbind(FunctionUnbindInput &input)
 
 template <bool IS_STRUCT_PACK>
 static ScalarFunction GetStructPackFunction() {
-	// the bind builds the struct of the arguments. struct_pack derives its field names from argument aliases, so
+	// the return type is the struct of the arguments. struct_pack derives its field names from argument aliases, so
 	// the binder must capture argument expression aliases as named-argument names. This also preserves the legacy
 	// behavior of allowing positional arguments after named ones (the positional arguments simply take their
 	// expression's name as the field name). row produces an unnamed TUPLE, so it ignores the names of its arguments
@@ -100,9 +96,9 @@ static ScalarFunction GetStructPackFunction() {
 	} else {
 		signature.AddArgs("args", LogicalType::ANY);
 	}
-	signature.SetReturnType(ReturnType::ANY());
+	signature.SetReturnType(ReturnType::ANY(StructPackReturnType<IS_STRUCT_PACK>));
 	ScalarFunction fun(IS_STRUCT_PACK ? "struct_pack" : "row", std::move(signature), StructPackFunction,
-	                   StructPackBind<IS_STRUCT_PACK>, StructPackStats);
+	                   VariableReturnBindData::Bind, StructPackStats);
 	if (IS_STRUCT_PACK) {
 		fun.SetCaptureArgumentAliases(true);
 	}

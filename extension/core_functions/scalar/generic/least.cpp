@@ -238,33 +238,12 @@ unique_ptr<BaseStatistics> PropagateLeastGreatestStats(ClientContext &context, F
 	return result.ToUnique();
 }
 
+//! Selects the implementation for the type the arguments are unified to
 template <class LEAST_GREATER_OP>
-void LeastGreatestResolveTypes(ResolveScalarFunctionTypesInput &input) {
-	auto &context = input.GetClientContext();
+unique_ptr<FunctionData> LeastGreatestBind(BindScalarFunctionInput &input) {
 	auto &bound_function = input.GetBoundFunction();
-	LogicalType child_type = ExpressionBinder::GetExpressionReturnType(input.GetArgument(0));
-	for (idx_t i = 1; i < input.GetArgumentCount(); i++) {
-		auto arg_type = ExpressionBinder::GetExpressionReturnType(input.GetArgument(i));
-		if (!LogicalType::TryGetMaxLogicalType(context, child_type, arg_type, child_type)) {
-			throw BinderException(input.GetArgument(i).GetQueryLocation(),
-			                      "Cannot combine types of %s and %s - an explicit cast is required",
-			                      child_type.ToString(), arg_type.ToString());
-		}
-	}
-	switch (child_type.id()) {
-	case LogicalTypeId::UNKNOWN:
-		throw ParameterNotResolvedException();
-	case LogicalTypeId::INTEGER_LITERAL:
-		child_type = IntegerLiteral::GetType(child_type);
-		break;
-	case LogicalTypeId::STRING_LITERAL:
-		child_type = LogicalType::VARCHAR;
-		break;
-	default:
-		break;
-	}
 	using OP = typename LEAST_GREATER_OP::OP;
-	switch (child_type.InternalType()) {
+	switch (bound_function.GetReturnType().InternalType()) {
 #if !DUCKDB_SMALLER_BINARY(least_greatest_types)
 	case PhysicalType::BOOL:
 	case PhysicalType::INT8:
@@ -295,22 +274,21 @@ void LeastGreatestResolveTypes(ResolveScalarFunctionTypesInput &input) {
 		bound_function.SetInitStateCallback(LeastGreatestSortKeyInit<LEAST_GREATER_OP>);
 		break;
 	}
-	for (auto &arg : bound_function.GetArguments()) {
-		arg = child_type;
-	}
-	bound_function.SetReturnType(child_type);
+	return nullptr;
 }
 
 template <class OP>
 ScalarFunction GetLeastGreatestFunction() {
+	// the arguments are cast to the type they have in common, which is the type that is returned
+	auto type = TypeName::VARIABLE("T");
 	ScalarFunction fun(FunctionSignature()
-	                       .AddParameter("arg1", LogicalType::ANY)
-	                       .AddArgs("args", LogicalType::ANY)
-	                       .AddKwargs("kwargs", LogicalType::ANY)
-	                       .SetReturnType(ReturnType::ANY()),
-	                   nullptr, nullptr, PropagateLeastGreatestStats<OP>, nullptr, FunctionStability::CONSISTENT,
-	                   FunctionNullHandling::SPECIAL_HANDLING);
-	fun.SetResolveTypesCallback(LeastGreatestResolveTypes<OP>);
+	                       .AddVariable("T")
+	                       .AddParameter("arg1", type)
+	                       .AddArgs("args", type)
+	                       .AddKwargs("kwargs", type)
+	                       .SetReturnType(type),
+	                   nullptr, LeastGreatestBind<OP>, PropagateLeastGreatestStats<OP>, nullptr,
+	                   FunctionStability::CONSISTENT, FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }
 

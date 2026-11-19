@@ -102,7 +102,6 @@ static unique_ptr<FunctionData> StructExtractBind(BindScalarFunctionInput &input
 
 	LogicalType return_type;
 	auto key_index = ResolveStructEntryByName(bound_function.GetArguments()[0], StringValue::Get(key_val), return_type);
-	bound_function.SetReturnType(std::move(return_type));
 	return StructExtractAtFun::GetBindData(key_index);
 }
 
@@ -113,7 +112,6 @@ static unique_ptr<FunctionData> StructExtractBindIndex(BindScalarFunctionInput &
 	LogicalType return_type;
 	auto key_index =
 	    ResolveStructEntryByIndex(bound_function.GetArguments()[0], key_val.GetValue<int64_t>(), return_type);
-	bound_function.SetReturnType(std::move(return_type));
 	return StructExtractAtFun::GetBindData(key_index);
 }
 

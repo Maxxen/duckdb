@@ -80,7 +80,7 @@ struct StCrsFun {
 	static constexpr const char *Example = "";
 	static constexpr const char *Categories = "geometry";
 
-	static ScalarFunction GetFunction();
+	static ScalarFunctionSet GetFunctions();
 };
 
 struct StSetcrsFun {

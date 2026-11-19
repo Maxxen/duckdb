@@ -39,7 +39,7 @@
     "parameters": "geom",
     "description": "Returns the Coordinate Reference System (CRS) identifier of the geometry",
     "categories": ["geometry"],
-    "type": "scalar_function"
+    "type": "scalar_function_set"
   },
   {
     "name": "st_setcrs",

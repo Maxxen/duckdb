@@ -21,11 +21,10 @@ static void StructConcatFunction(DataChunk &args, ExpressionState &state, Vector
 	D_ASSERT(offset == result_cols.size());
 }
 
-static unique_ptr<FunctionData> StructConcatBind(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
+//! The struct of the fields of the structs that are concatenated
+static LogicalType StructConcatReturnType(const ResolveReturnTypeInput &input) {
 	// collect names and deconflict, construct return type
-	if (arguments.empty()) {
+	if (input.GetArgumentCount() == 0) {
 		throw InvalidInputException("struct_concat: At least one argument is required");
 	}
 
@@ -34,14 +33,14 @@ static unique_ptr<FunctionData> StructConcatBind(BindScalarFunctionInput &input)
 
 	bool has_unnamed = false;
 
-	for (idx_t arg_idx = 0; arg_idx < arguments.size(); arg_idx++) {
-		const auto &arg = arguments[arg_idx];
+	for (idx_t arg_idx = 0; arg_idx < input.GetArgumentCount(); arg_idx++) {
+		const auto &arg_type = input.GetArgument(arg_idx).GetReturnType();
 
-		if (!StructType::IsStruct(arg->GetReturnType())) {
+		if (!StructType::IsStruct(arg_type)) {
 			throw InvalidInputException("struct_concat: Argument at position \"%d\" is not a STRUCT", arg_idx + 1);
 		}
 
-		const auto &child_types = StructType::GetChildTypes(arg->GetReturnType());
+		const auto &child_types = StructType::GetChildTypes(arg_type);
 		for (const auto &child : child_types) {
 			if (!child.first.empty()) {
 				auto it = name_set.find(child.first);
@@ -67,12 +66,7 @@ static unique_ptr<FunctionData> StructConcatBind(BindScalarFunctionInput &input)
 	}
 
 	// all-unnamed inputs produce an unnamed TUPLE, otherwise a named STRUCT
-	if (has_unnamed) {
-		bound_function.SetReturnType(LogicalType::TUPLE(combined_children));
-	} else {
-		bound_function.SetReturnType(LogicalType::STRUCT(combined_children));
-	}
-	return nullptr;
+	return has_unnamed ? LogicalType::TUPLE(combined_children) : LogicalType::STRUCT(combined_children);
 }
 
 static unique_ptr<BaseStatistics> StructConcatStats(ClientContext &context, FunctionStatisticsInput &input) {
@@ -97,10 +91,10 @@ static unique_ptr<BaseStatistics> StructConcatStats(ClientContext &context, Func
 }
 
 ScalarFunction StructConcatFun::GetFunction() {
-	// the bind builds the struct of the structs that are concatenated
-	ScalarFunction fun("struct_concat",
-	                   FunctionSignature().AddArgs("args", LogicalType::ANY).SetReturnType(ReturnType::ANY()),
-	                   StructConcatFunction, StructConcatBind, StructConcatStats);
+	ScalarFunction fun(
+	    "struct_concat",
+	    FunctionSignature().AddArgs("args", LogicalType::ANY).SetReturnType(ReturnType::ANY(StructConcatReturnType)),
+	    StructConcatFunction, nullptr, StructConcatStats);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }

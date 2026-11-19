@@ -83,33 +83,25 @@ static unique_ptr<FunctionData> BindEnumFunction(BindScalarFunctionInput &input)
 	return nullptr;
 }
 
-static unique_ptr<FunctionData> BindEnumCodeFunction(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	CheckEnumParameter(*arguments[0]);
-	if (arguments[0]->GetReturnType().id() != LogicalTypeId::ENUM) {
+//! The unsigned integer the values of the enum are stored as
+static LogicalType EnumCodeReturnType(const ResolveReturnTypeInput &input) {
+	auto &argument = input.GetArgument(0);
+	CheckEnumParameter(argument);
+	if (argument.GetReturnType().id() != LogicalTypeId::ENUM) {
 		throw BinderException("This function needs an ENUM as an argument");
 	}
-
-	auto phy_type = EnumType::GetPhysicalType(arguments[0]->GetReturnType());
-	switch (phy_type) {
+	switch (EnumType::GetPhysicalType(argument.GetReturnType())) {
 	case PhysicalType::UINT8:
-		bound_function.SetReturnType(LogicalType(LogicalTypeId::UTINYINT));
-		break;
+		return LogicalType::UTINYINT;
 	case PhysicalType::UINT16:
-		bound_function.SetReturnType(LogicalType(LogicalTypeId::USMALLINT));
-		break;
+		return LogicalType::USMALLINT;
 	case PhysicalType::UINT32:
-		bound_function.SetReturnType(LogicalType(LogicalTypeId::UINTEGER));
-		break;
+		return LogicalType::UINTEGER;
 	case PhysicalType::UINT64:
-		bound_function.SetReturnType(LogicalType(LogicalTypeId::UBIGINT));
-		break;
+		return LogicalType::UBIGINT;
 	default:
 		throw InternalException("Unsupported Enum Internal Type");
 	}
-
-	return nullptr;
 }
 
 static unique_ptr<FunctionData> BindEnumRangeBoundaryFunction(BindScalarFunctionInput &input) {
@@ -160,8 +152,8 @@ ScalarFunction EnumCodeFun::GetFunction() {
 	auto fun = ScalarFunction(FunctionSignature()
 	                              .AddVariable("T", LogicalTypeId::ENUM)
 	                              .AddParameter("enum", TypeName::VARIABLE("T"))
-	                              .SetReturnType(ReturnType::ANY()),
-	                          EnumCodeFunction, BindEnumCodeFunction);
+	                              .SetReturnType(ReturnType::ANY(EnumCodeReturnType)),
+	                          EnumCodeFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }

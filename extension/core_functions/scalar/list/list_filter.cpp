@@ -27,7 +27,6 @@ static unique_ptr<FunctionData> ListFilterBind(BindScalarFunctionInput &input) {
 
 	arguments[0] = BoundCastExpression::AddArrayCastToList(context, std::move(arguments[0]));
 
-	bound_function.SetReturnType(arguments[0]->GetReturnType());
 	auto has_index = bound_lambda_expr.ParameterCount() == 2;
 	return LambdaFunctions::ListLambdaBind(context, bound_function, arguments, has_index);
 }

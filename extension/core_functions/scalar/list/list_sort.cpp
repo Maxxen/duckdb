@@ -325,7 +325,6 @@ static unique_ptr<FunctionData> ListSortBind(ClientContext &context, BoundScalar
 	auto child_type = ListType::GetChildType(arguments[0]->GetReturnType());
 
 	bound_function.GetArguments()[0] = arguments[0]->GetReturnType();
-	bound_function.SetReturnType(arguments[0]->GetReturnType());
 
 	return make_uniq<ListSortBindData>(order, null_order, false, bound_function.GetReturnType(), child_type, context);
 }
@@ -362,7 +361,6 @@ static unique_ptr<FunctionData> ListGradeUpBind(BindScalarFunctionInput &input) 
 	}
 
 	bound_function.GetArguments()[0] = arguments[0]->GetReturnType();
-	bound_function.SetReturnType(LogicalType::LIST(LogicalTypeId::BIGINT));
 	auto child_type = ListType::GetChildType(arguments[0]->GetReturnType());
 	return make_uniq<ListSortBindData>(order, null_order, true, bound_function.GetReturnType(), child_type, context);
 }

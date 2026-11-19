@@ -991,6 +991,7 @@ public:
 	}
 
 	using BindFunctionInput::GetArgumentName;
+	using BindFunctionInput::GetClientContext;
 	using BindFunctionInput::GetConstant;
 	using BindFunctionInput::GetNonNullConstant;
 	using BindFunctionInput::TryGetConstant;

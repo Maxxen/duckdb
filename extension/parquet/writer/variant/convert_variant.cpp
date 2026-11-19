@@ -138,32 +138,21 @@ LogicalType VariantColumnWriter::GetParquetVariantType(optional_ptr<LogicalType>
 	return LogicalType::STRUCT(std::move(children)).WithAlias("PARQUET_VARIANT");
 }
 
-static unique_ptr<FunctionData> BindTransform(BindScalarFunctionInput &input) {
-	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	if (arguments.empty()) {
-		return nullptr;
+//! The parquet variant, shredded to the type the constant second argument names
+static LogicalType TransformReturnType(const ResolveReturnTypeInput &input) {
+	if (input.GetArgumentCount() != 2) {
+		return VariantColumnWriter::GetParquetVariantType();
 	}
-	auto type = ExpressionBinder::GetExpressionReturnType(*arguments[0]);
-
-	if (arguments.size() == 2) {
-		auto &shredding = *arguments[1];
-		auto expr_return_type = ExpressionBinder::GetExpressionReturnType(shredding);
-		expr_return_type = LogicalType::NormalizeType(expr_return_type);
-		if (expr_return_type.id() != LogicalTypeId::VARCHAR) {
-			throw BinderException("Optional second argument 'shredding' has to be of type VARCHAR, i.e: "
-			                      "'STRUCT(my_field BOOLEAN)', found type: '%s' instead",
-			                      expr_return_type);
-		}
-		auto type_str = input.GetNonNullConstant(1);
-		auto shredded_type = TransformStringToLogicalType(type_str.GetValue<string>(), context);
-		bound_function.SetReturnType(VariantColumnWriter::GetParquetVariantType(shredded_type));
-	} else {
-		bound_function.SetReturnType(VariantColumnWriter::GetParquetVariantType());
+	auto expr_return_type = ExpressionBinder::GetExpressionReturnType(input.GetArgument(1));
+	expr_return_type = LogicalType::NormalizeType(expr_return_type);
+	if (expr_return_type.id() != LogicalTypeId::VARCHAR) {
+		throw BinderException("Optional second argument 'shredding' has to be of type VARCHAR, i.e: "
+		                      "'STRUCT(my_field BOOLEAN)', found type: '%s' instead",
+		                      expr_return_type);
 	}
-
-	return nullptr;
+	auto type_str = input.GetNonNullConstant(1);
+	auto shredded_type = TransformStringToLogicalType(type_str.GetValue<string>(), input.GetClientContext());
+	return VariantColumnWriter::GetParquetVariantType(shredded_type);
 }
 
 //! The conversion itself lives in core (ParquetVariantConversion::ToParquetVariant), so the
@@ -188,7 +177,7 @@ static void ToParquetVariantWriteFunction(DataChunk &input, ExpressionState &sta
 
 ScalarFunction VariantColumnWriter::GetTransformFunction(bool preserve_nulls) {
 	auto function = preserve_nulls ? ToParquetVariantWriteFunction : ToParquetVariantFunction;
-	ScalarFunction transform("variant_to_parquet_variant", {}, ReturnType::ANY(), function, BindTransform);
+	ScalarFunction transform("variant_to_parquet_variant", {}, ReturnType::ANY(TransformReturnType), function);
 	transform.GetSignature().AddParameter("variant", LogicalType::VARIANT());
 	transform.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	// throws for values that are out of range for the parquet variant encoding

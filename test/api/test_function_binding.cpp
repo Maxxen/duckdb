@@ -370,6 +370,42 @@ TEST_CASE("A call several overloads match at the same cost is ambiguous", "[api]
 	REQUIRE(candidates[0].cost == candidates[1].cost);
 }
 
+TEST_CASE("Of the overloads that match at the same cost the most specific one is selected", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	// crs<C: STRING>(g GEOMETRY(C)) says more about its argument than crs(g GEOMETRY)
+	ScalarFunctionSet crs("crs");
+	crs.AddFunction(ScalarFunction("crs",
+	                               FunctionSignature()
+	                                   .AddVariable("C", TypeVariable::Kind::STRING)
+	                                   .AddParameter("g", TypeName(Identifier("GEOMETRY"), {TypeName::VARIABLE("C")}))
+	                                   .SetReturnType(LogicalType::VARCHAR),
+	                               NoopExec));
+	crs.AddFunction(ScalarFunction(
+	    "crs", FunctionSignature().AddParameter("g", LogicalType::GEOMETRY()).SetReturnType(LogicalType::VARCHAR),
+	    NoopExec));
+
+	con.context->RunFunctionInTransaction([&]() {
+		// a geometry of a coordinate reference system is taken as it is
+		auto geometry_crs = LogicalType::GEOMETRY("OGC:CRS84");
+		auto selection = FunctionBinder::SelectFunction(*con.context, crs, {geometry_crs});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+		REQUIRE(selection.GetBinding().parameter_types[0] == geometry_crs);
+		REQUIRE(selection.GetBinding().variable_values.at("C") == Value("OGC:CRS84"));
+
+		// one without does not determine the variable
+		selection = FunctionBinder::SelectFunction(*con.context, crs, {LogicalType::GEOMETRY()});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 1);
+
+		// a NULL matches both
+		selection = FunctionBinder::SelectFunction(*con.context, crs, {LogicalType::SQLNULL});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+	});
+}
+
 TEST_CASE("A named argument passed twice matches no overload", "[api][function_binding]") {
 	DuckDB db(nullptr);
 	Connection con(db);

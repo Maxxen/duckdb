@@ -45,7 +45,6 @@ static unique_ptr<FunctionData> CardinalityBind(BindScalarFunctionInput &input) 
 		throw BinderException("Cardinality can only operate on MAPs, LISTs and ARRAYs");
 	}
 
-	bound_function.SetReturnType(LogicalType::UBIGINT);
 	return make_uniq<VariableReturnBindData>(bound_function.GetReturnType());
 }
 

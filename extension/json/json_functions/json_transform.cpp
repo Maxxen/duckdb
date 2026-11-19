@@ -84,25 +84,22 @@ static LogicalType StructureStringToType(yyjson_val *val, ClientContext &context
 	}
 }
 
-static unique_ptr<FunctionData> JSONTransformBind(BindScalarFunctionInput &input) {
+//! The type the constant structure describes
+static LogicalType JSONTransformReturnType(const ResolveReturnTypeInput &input) {
 	auto &context = input.GetClientContext();
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	D_ASSERT(bound_function.GetArguments().size() == 2);
+	D_ASSERT(input.GetArgumentCount() == 2);
 	auto structure_val = input.GetConstant(1);
-	if (structure_val.IsNull() || arguments[1]->GetReturnType() == LogicalTypeId::SQLNULL) {
-		bound_function.SetReturnType(LogicalTypeId::SQLNULL);
-	} else {
-		auto json_structure_val = structure_val.TryCastAs(input.GetClientContext(), LogicalType::JSON());
-		if (!json_structure_val) {
-			throw BinderException("Cannot cast JSON structure to string");
-		}
-		auto structure_string = json_structure_val->GetValueUnsafe<string_t>();
-		JSONAllocator json_allocator(Allocator::DefaultAllocator());
-		auto doc = JSONCommon::ReadDocument(structure_string, JSONCommon::READ_FLAG, json_allocator.GetYYAlc());
-		bound_function.SetReturnType(StructureStringToType(doc->root, context));
+	if (structure_val.IsNull() || input.GetArgument(1).GetReturnType() == LogicalTypeId::SQLNULL) {
+		return LogicalTypeId::SQLNULL;
 	}
-	return make_uniq<VariableReturnBindData>(bound_function.GetReturnType());
+	auto json_structure_val = structure_val.TryCastAs(context, LogicalType::JSON());
+	if (!json_structure_val) {
+		throw BinderException("Cannot cast JSON structure to string");
+	}
+	auto structure_string = json_structure_val->GetValueUnsafe<string_t>();
+	JSONAllocator json_allocator(Allocator::DefaultAllocator());
+	auto doc = JSONCommon::ReadDocument(structure_string, JSONCommon::READ_FLAG, json_allocator.GetYYAlc());
+	return StructureStringToType(doc->root, context);
 }
 
 static inline string_t GetString(yyjson_val *val) {
@@ -1257,8 +1254,8 @@ static void TransformFunction(DataChunk &args, ExpressionState &state, Vector &r
 }
 
 static void GetTransformFunctionInternal(ScalarFunctionSet &set, const LogicalType &input_type) {
-	ScalarFunction fun({}, ReturnType::ANY(), TransformFunction<false>, JSONTransformBind, nullptr,
-	                   JSONFunctionLocalState::Init);
+	ScalarFunction fun({}, ReturnType::ANY(JSONTransformReturnType), TransformFunction<false>,
+	                   VariableReturnBindData::Bind, nullptr, JSONFunctionLocalState::Init);
 	fun.GetSignature().AddParameter("json", input_type).AddParameter("structure", LogicalType::VARCHAR);
 	set.AddFunction(fun);
 }
@@ -1272,8 +1269,8 @@ ScalarFunctionSet JSONFunctions::GetTransformFunction() {
 }
 
 static void GetTransformStrictFunctionInternal(ScalarFunctionSet &set, const LogicalType &input_type) {
-	ScalarFunction fun({}, ReturnType::ANY(), TransformFunction<true>, JSONTransformBind, nullptr,
-	                   JSONFunctionLocalState::Init);
+	ScalarFunction fun({}, ReturnType::ANY(JSONTransformReturnType), TransformFunction<true>,
+	                   VariableReturnBindData::Bind, nullptr, JSONFunctionLocalState::Init);
 	fun.GetSignature().AddParameter("json", input_type).AddParameter("structure", LogicalType::VARCHAR);
 	set.AddFunction(fun);
 }

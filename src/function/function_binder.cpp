@@ -8,6 +8,7 @@
 #include "duckdb/common/limits.hpp"
 #include "duckdb/common/numeric_utils.hpp"
 #include "duckdb/common/type_visitor.hpp"
+#include "duckdb/common/types/geometry_crs.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/function/aggregate_function.hpp"
 #include "duckdb/function/cast/cast_function_set.hpp"
@@ -490,16 +491,23 @@ static bool InferVariables(optional_ptr<ClientContext> context, const FunctionSi
 		       InferVariables(context, signature, arguments[index].GetType(), argument_type, variables, failure);
 	};
 	// the value an argument of the type name stands for, if that argument is a value variable
-	auto infer_value = [&](idx_t index, idx_t value) {
+	auto infer_value = [&](idx_t index, Value value) {
 		return index >= arguments.size() || !FindValueVariable(arguments[index], signature) ||
-		       UnifyValue(arguments[index].GetType().GetName(), Value::BIGINT(NumericCast<int64_t>(value)), variables,
-		                  failure);
+		       UnifyValue(arguments[index].GetType().GetName(), std::move(value), variables, failure);
+	};
+	auto infer_integer = [&](idx_t index, idx_t value) {
+		return infer_value(index, Value::BIGINT(NumericCast<int64_t>(value)));
 	};
 	const auto kind = DefaultTypeGenerator::GetDefaultType(name.GetName());
 	if (kind == LogicalTypeId::DECIMAL) {
 		// the width and scale of a decimal, or of the decimal a number is passed as
 		uint32_t width, scale;
-		return !type.GetDecimalProperties(width, scale) || (infer_value(0, width) && infer_value(1, scale));
+		return !type.GetDecimalProperties(width, scale) || (infer_integer(0, width) && infer_integer(1, scale));
+	}
+	if (kind == LogicalTypeId::GEOMETRY) {
+		// the coordinate reference system of a geometry that has one
+		return type.id() != LogicalTypeId::GEOMETRY || !GeoType::HasCRS(type) ||
+		       infer_value(0, Value(GeoType::GetCRS(type).GetDefinition()));
 	}
 
 	// a nested type: infer the variables of the types it is made of from those the argument is made of
@@ -514,7 +522,7 @@ static bool InferVariables(optional_ptr<ClientContext> context, const FunctionSi
 		}
 		if (type.id() == LogicalTypeId::ARRAY) {
 			return infer_argument(0, ArrayType::GetChildType(type)) &&
-			       (ArrayType::IsAnySize(type) || infer_value(1, ArrayType::GetSize(type)));
+			       (ArrayType::IsAnySize(type) || infer_integer(1, ArrayType::GetSize(type)));
 		}
 		return true;
 	case LogicalTypeId::MAP:
@@ -548,6 +556,30 @@ static bool InferVariables(optional_ptr<ClientContext> context, const FunctionSi
 	default:
 		return true;
 	}
+}
+
+//! Whether a type is the type a type name stands for, given the values the type determines: DECIMAL(W, S) is every
+//! decimal, GEOMETRY(C) is every geometry that has a coordinate reference system
+static bool IsTypeOfValues(optional_ptr<ClientContext> context, const FunctionSignature &signature,
+                           const TypeName &name, const LogicalType &type) {
+	if (!name.HasArguments() || type.id() != DefaultTypeGenerator::GetDefaultType(name.GetName())) {
+		return false;
+	}
+	FunctionVariables own_variables;
+	FunctionMismatch::TemplateDeduction failure;
+	if (!InferVariables(context, signature, name, type, own_variables, failure)) {
+		return false;
+	}
+	for (auto &argument : name.GetArguments()) {
+		if (!FindValueVariable(argument, signature)) {
+			return false;
+		}
+		auto entry = own_variables.values.find(argument.GetType().GetName().GetIdentifierName());
+		if (entry == own_variables.values.end() || entry->second.IsNull()) {
+			return false;
+		}
+	}
+	return true;
 }
 
 //! The value of an argument, if it is known when the call is bound
@@ -660,6 +692,114 @@ DeduceVariables(optional_ptr<ClientContext> context, const FunctionSignature &si
 		}
 	}
 	return nullopt;
+}
+
+//===--------------------------------------------------------------------===//
+// Specificity
+//===--------------------------------------------------------------------===//
+//! How much a type name, or an overload, says about what it takes, compared to another one
+enum class Specificity : uint8_t { EQUAL, MORE, LESS, INCOMPARABLE };
+
+//! More specific if no part is less specific and one part is more specific
+static Specificity CombineSpecificity(Specificity left, Specificity right) {
+	if (left == Specificity::EQUAL || left == right) {
+		return right;
+	}
+	return right == Specificity::EQUAL ? left : Specificity::INCOMPARABLE;
+}
+
+//! The kind of type a type name stands for: the kind a type variable is constrained to, or the built-in type of
+//! the name. INVALID if it is neither
+static LogicalTypeId GetTypeKind(const FunctionSignature &signature, const TypeName &name, bool &is_variable) {
+	auto variable = name.HasArguments() ? nullptr : signature.FindVariable(name.GetName());
+	is_variable = variable && !variable->IsValue();
+	if (is_variable) {
+		return signature.GetConstraint(name.GetName());
+	}
+	return DefaultTypeGenerator::GetDefaultType(name.GetName());
+}
+
+//! Whether a type name says more than another one about the types it stands for: a type says more than a type
+//! variable, a type variable of a kind more than one of any type, DECIMAL(W, S) more than DECIMAL, and
+//! DECIMAL(W, 0) more than DECIMAL(W, S)
+static Specificity CompareSpecificity(const FunctionSignature &left_signature, const TypeName &left,
+                                      const FunctionSignature &right_signature, const TypeName &right) {
+	bool left_is_variable, right_is_variable;
+	auto left_kind = GetTypeKind(left_signature, left, left_is_variable);
+	auto right_kind = GetTypeKind(right_signature, right, right_is_variable);
+	const bool left_is_any =
+	    left.IsBuiltinType(LogicalTypeId::ANY) || (left_is_variable && left_kind == LogicalTypeId::INVALID);
+	const bool right_is_any =
+	    right.IsBuiltinType(LogicalTypeId::ANY) || (right_is_variable && right_kind == LogicalTypeId::INVALID);
+	if (left_is_any || right_is_any) {
+		if (left_is_any && right_is_any) {
+			return Specificity::EQUAL;
+		}
+		return left_is_any ? Specificity::LESS : Specificity::MORE;
+	}
+	if (left_is_variable || right_is_variable) {
+		// a type variable of a kind, and a type of that kind
+		if (left_kind != right_kind) {
+			return Specificity::INCOMPARABLE;
+		}
+		if (left_is_variable && right_is_variable) {
+			return Specificity::EQUAL;
+		}
+		return left_is_variable ? Specificity::LESS : Specificity::MORE;
+	}
+	if (left.GetName() != right.GetName()) {
+		return Specificity::INCOMPARABLE;
+	}
+	auto &left_arguments = left.GetArguments();
+	auto &right_arguments = right.GetArguments();
+	if (left_arguments.empty() || right_arguments.empty()) {
+		// the name alone is every type of the name
+		if (left_arguments.empty() && right_arguments.empty()) {
+			return Specificity::EQUAL;
+		}
+		return left_arguments.empty() ? Specificity::LESS : Specificity::MORE;
+	}
+	if (left_arguments.size() != right_arguments.size()) {
+		return Specificity::INCOMPARABLE;
+	}
+	auto result = Specificity::EQUAL;
+	for (idx_t i = 0; i < left_arguments.size(); i++) {
+		auto &left_argument = left_arguments[i];
+		auto &right_argument = right_arguments[i];
+		const bool left_is_value = FindValueVariable(left_argument, left_signature);
+		const bool right_is_value = FindValueVariable(right_argument, right_signature);
+		Specificity argument;
+		if (left_is_value || right_is_value) {
+			// a value says more than a value variable
+			if (left_is_value && right_is_value) {
+				argument = Specificity::EQUAL;
+			} else if (left_is_value) {
+				argument = right_argument.IsType() ? Specificity::INCOMPARABLE : Specificity::LESS;
+			} else {
+				argument = left_argument.IsType() ? Specificity::INCOMPARABLE : Specificity::MORE;
+			}
+		} else if (left_argument.IsType() && right_argument.IsType()) {
+			argument =
+			    CompareSpecificity(left_signature, left_argument.GetType(), right_signature, right_argument.GetType());
+		} else {
+			argument = left_argument == right_argument ? Specificity::EQUAL : Specificity::INCOMPARABLE;
+		}
+		result = CombineSpecificity(result, argument);
+	}
+	return result;
+}
+
+//! Whether an overload says more than another one about the arguments of the call both match
+static Specificity CompareSpecificity(const FunctionBinding &left, const FunctionBinding &right) {
+	auto &left_signature = left.GetFunction().GetSignature();
+	auto &right_signature = right.GetFunction().GetSignature();
+	auto result = Specificity::EQUAL;
+	for (idx_t i = 0; i < left.argument_to_parameters.size(); i++) {
+		auto &left_type = left_signature.GetParameter(left.argument_to_parameters[i]).GetTypeName();
+		auto &right_type = right_signature.GetParameter(right.argument_to_parameters[i]).GetTypeName();
+		result = CombineSpecificity(result, CompareSpecificity(left_signature, left_type, right_signature, right_type));
+	}
+	return result;
 }
 
 //! How useful a reason is to report, lower is more useful. A wrong name points at an argument the call passes, and
@@ -880,8 +1020,17 @@ std::variant<FunctionBinding, FunctionMismatch> FunctionBinder::MatchOverload(op
 				// the call passes nothing to the parameter, so nothing determines its type
 				continue;
 			}
-			parameter_types[param_idx] =
-			    BindTypeName(context, sig.GetParameter(param_idx).GetTypeName(), sig, variables);
+			auto &param_type = sig.GetParameter(param_idx).GetTypeName();
+			optional_idx own_type;
+			for (idx_t i = 0; i < binding.argument_to_parameters.size() && !own_type.IsValid(); i++) {
+				if (binding.argument_to_parameters[i] == param_idx &&
+				    IsTypeOfValues(context, sig, param_type, call.GetArgument(i).type)) {
+					own_type = i;
+				}
+			}
+			// an argument that is of the type already is taken as it is, the others are cast to that type
+			parameter_types[param_idx] = own_type.IsValid() ? call.GetArgument(own_type.GetIndex()).type
+			                                                : BindTypeName(context, param_type, sig, variables);
 		}
 		// An argument passed as a type variable is cast to the type the variable is determined to be. An overload
 		// that takes any type is selected last, the more so the less the parameter says about the type
@@ -962,6 +1111,16 @@ FunctionBindResult FunctionBinder::SelectFunction(optional_ptr<ClientContext> co
 		if (call.GetArgument(i).type.IsUnknown()) {
 			// the types of the prepared statement parameters may decide between them
 			throw ParameterNotResolvedException();
+		}
+	}
+	// the overload that declares the most about its arguments is the best match, if there is one
+	for (idx_t i = 0; i < cheapest.size(); i++) {
+		bool most_specific = true;
+		for (idx_t j = 0; j < cheapest.size() && most_specific; j++) {
+			most_specific = i == j || CompareSpecificity(cheapest[i], cheapest[j]) == Specificity::MORE;
+		}
+		if (most_specific) {
+			return std::move(cheapest[i]);
 		}
 	}
 	return FunctionBindError::CreateAmbiguousMatch(functions.GetName(), call, std::move(cheapest));

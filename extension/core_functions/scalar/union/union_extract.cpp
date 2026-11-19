@@ -98,7 +98,6 @@ unique_ptr<FunctionData> UnionExtractBind(BindScalarFunctionInput &input) {
 		// LCOV_EXCL_STOP
 	}
 
-	bound_function.SetReturnType(return_type);
 	return make_uniq<UnionExtractBindData>(key, key_index, return_type);
 }
 

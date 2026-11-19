@@ -16,10 +16,7 @@ void TryRethrowFunction(DataChunk &args, ExpressionState &state, Vector &result)
 }
 
 unique_ptr<FunctionData> TryRethrowBind(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	bound_function.SetReturnType(arguments[1]->GetReturnType());
-	return make_uniq<VariableReturnBindData>(bound_function.GetReturnType());
+	return make_uniq<VariableReturnBindData>(input.GetBoundFunction().GetReturnType());
 }
 
 } // namespace

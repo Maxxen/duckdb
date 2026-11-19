@@ -15,11 +15,9 @@ void BarrierFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	result.Reference(args.data[0]);
 }
 
-unique_ptr<FunctionData> BarrierBind(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	bound_function.SetReturnType(arguments[0]->GetReturnType());
-	return make_uniq<VariableReturnBindData>(bound_function.GetReturnType());
+//! The argument is returned as it is
+LogicalType BarrierReturnType(const ResolveReturnTypeInput &input) {
+	return input.GetArgument(0).GetReturnType();
 }
 
 unique_ptr<BaseStatistics> BarrierStats(ClientContext &context, FunctionStatisticsInput &input) {
@@ -30,7 +28,7 @@ unique_ptr<BaseStatistics> BarrierStats(ClientContext &context, FunctionStatisti
 ScalarFunction GetBarrierFunction(const TypeName &type, ReturnType return_type) {
 	ScalarFunction fun(BarrierFun::Name, {}, std::move(return_type), BarrierFunction);
 	fun.GetSignature().AddParameter("arg", type);
-	fun.SetBindCallback(BarrierBind);
+	fun.SetBindCallback(VariableReturnBindData::Bind);
 	fun.SetStatisticsCallback(BarrierStats);
 	// default null handling replaces the call with a NULL constant when the argument is typed as NULL - that would
 	// swallow the very expression the barrier exists to preserve, e.g. __internal_barrier(error('boom'))
@@ -44,7 +42,7 @@ ScalarFunction GetBarrierFunction(const TypeName &type, ReturnType return_type) 
 } // namespace
 
 ScalarFunction BarrierFun::GetFunction() {
-	return GetBarrierFunction(LogicalType::ANY, ReturnType::ANY());
+	return GetBarrierFunction(LogicalType::ANY, ReturnType::ANY(BarrierReturnType));
 }
 
 bool ExpressionBarrier::IsBarrier(const Expression &expr) {

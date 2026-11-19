@@ -111,7 +111,7 @@ infinity
 statement error
 SELECT LEAST(DATE '1992-01-01', 'hello', 123)
 ----
-Cannot combine types
+Cannot deduce template type 'T'
 
 # tables
 statement ok
