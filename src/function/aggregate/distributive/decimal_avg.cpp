@@ -143,24 +143,16 @@ static unique_ptr<FunctionData> BindDecimalAverage(BindAggregateFunctionInput &i
 	auto name = function.GetName();
 	switch (input_type.InternalType()) {
 	case PhysicalType::INT16:
-		function.ReplaceImplementation(
-		    input.GetClientContext(),
-		    MakeDecimalAvgFunction<int16_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT16, scale), return_type));
+		function.ReplaceKernel(MakeDecimalAvgFunction<int16_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT16, scale), return_type));
 		break;
 	case PhysicalType::INT32:
-		function.ReplaceImplementation(
-		    input.GetClientContext(),
-		    MakeDecimalAvgFunction<int32_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT32, scale), return_type));
+		function.ReplaceKernel(MakeDecimalAvgFunction<int32_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT32, scale), return_type));
 		break;
 	case PhysicalType::INT64:
-		function.ReplaceImplementation(
-		    input.GetClientContext(),
-		    MakeDecimalAvgFunction<int64_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT64, scale), return_type));
+		function.ReplaceKernel(MakeDecimalAvgFunction<int64_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT64, scale), return_type));
 		break;
 	case PhysicalType::INT128:
-		function.ReplaceImplementation(
-		    input.GetClientContext(),
-		    MakeDecimalAvgFunction<hugeint_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT128, scale), return_type));
+		function.ReplaceKernel(MakeDecimalAvgFunction<hugeint_t>(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT128, scale), return_type));
 		break;
 	case PhysicalType::VARCHAR:
 		throw NotImplementedException("decimal_average over DECIMAL types wider than %d digits is not supported yet",
@@ -169,18 +161,18 @@ static unique_ptr<FunctionData> BindDecimalAverage(BindAggregateFunctionInput &i
 		throw InternalException("decimal_average: unexpected physical type");
 	}
 	function.SetName(std::move(name));
-	function.GetArguments()[0] = input_type;
 	return nullptr;
 }
 
 AggregateFunctionSet DecimalAverageFun::GetFunctions() {
 	AggregateFunctionSet set("decimal_average");
-	// the bind selects the decimal the average is returned as
+	// the average of decimals is a decimal of their width and scale
+	auto decimal_type = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
 	AggregateFunction fun(FunctionSignature()
 	                          .AddVariable("W", TypeVariable::Kind::INTEGER)
 	                          .AddVariable("S", TypeVariable::Kind::INTEGER)
-	                          .AddParameter("arg", TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S")))
-	                          .SetReturnType(ReturnType::ANY()),
+	                          .AddParameter("arg", decimal_type)
+	                          .SetReturnType(decimal_type),
 	                      nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING,
 	                      nullptr, BindDecimalAverage);
 	set.AddFunction(fun);

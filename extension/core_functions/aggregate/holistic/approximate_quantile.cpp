@@ -645,12 +645,13 @@ unique_ptr<FunctionData> ApproxQuantileDecimalDeserialize(Deserializer &deserial
                                                           BoundAggregateFunction &function) {
 	auto bind_data = ApproximateQuantileBindData::Deserialize(deserializer, function);
 	auto &return_type = deserializer.Get<const LogicalType &>();
+	// the kernel returns the type it aggregates - in plans written before v2.0 the integer the DECIMAL is stored as
 	if (return_type.id() == LogicalTypeId::LIST) {
 		ReplaceApproxQuantileImplementation(deserializer.Get<ClientContext &>(), function,
-		                                    ApproxQuantileDecimalListFunction(function.GetArguments()[0]));
+		                                    ApproxQuantileDecimalListFunction(ListType::GetChildType(return_type)));
 	} else {
 		ReplaceApproxQuantileImplementation(deserializer.Get<ClientContext &>(), function,
-		                                    ApproxQuantileDecimalFunction(function.GetArguments()[0]));
+		                                    ApproxQuantileDecimalFunction(return_type));
 	}
 	return bind_data;
 }

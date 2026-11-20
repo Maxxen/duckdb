@@ -142,6 +142,12 @@ bool BoundAggregateFunction::operator!=(const BoundAggregateFunction &rhs) const
 	return !(*this == rhs);
 }
 
+void BoundAggregateFunction::ReplaceKernel(const AggregateFunction &kernel) {
+	properties = kernel.GetProperties();
+	callbacks = kernel.GetCallbacks();
+	function_info = kernel.GetFunctionInfo();
+}
+
 void BoundAggregateFunction::ReplaceImplementation(const BoundAggregateFunction &function) {
 	BaseAggregateFunction::operator=(function);
 	BoundSimpleFunction::operator=(function);

@@ -387,6 +387,17 @@ AggregateFunction GetHistogramBinFunction(const LogicalType &type) {
 	}
 }
 
+//! The bins of decimals are computed as doubles: the values and the bins are cast to them
+LogicalType HistogramBinReturnType(ResolveReturnTypeInput &input) {
+	auto bin_type = input.GetArgumentType(0);
+	if (bin_type.id() == LogicalTypeId::DECIMAL) {
+		bin_type = LogicalType::DOUBLE;
+		input.CastArgument(0, bin_type);
+		input.CastArgument(1, LogicalType::LIST(bin_type));
+	}
+	return LogicalType::MAP(bin_type, LogicalType::UBIGINT);
+}
+
 template <class HIST>
 unique_ptr<FunctionData> HistogramBinBindFunction(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
@@ -398,7 +409,7 @@ unique_ptr<FunctionData> HistogramBinBindFunction(BindAggregateFunctionInput &in
 	}
 
 	// the template signature resolved both parameters to the deduced bin type
-	function.ReplaceImplementation(input.GetClientContext(), GetHistogramBinFunction<HIST>(function.GetArguments()[0]));
+	function.ReplaceKernel(GetHistogramBinFunction<HIST>(function.GetArguments()[0]));
 	return nullptr;
 }
 
@@ -410,7 +421,7 @@ AggregateFunction HistogramFun::BinnedHistogramFunction() {
 	                               .AddVariable("T")
 	                               .AddParameter("arg", TypeName::VARIABLE("T"))
 	                               .AddParameter("bins", TypeName::LIST(TypeName::VARIABLE("T")))
-	                               .SetReturnType(ReturnType::ANY()),
+	                               .SetReturnType(ReturnType::ANY(HistogramBinReturnType)),
 	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 	                           HistogramBinBindFunction<HistogramRange>, nullptr);
 	return function;
@@ -422,7 +433,7 @@ AggregateFunction HistogramExactFun::GetFunction() {
 	                               .AddVariable("T")
 	                               .AddParameter("arg", TypeName::VARIABLE("T"))
 	                               .AddParameter("bins", TypeName::LIST(TypeName::VARIABLE("T")))
-	                               .SetReturnType(ReturnType::ANY()),
+	                               .SetReturnType(ReturnType::ANY(HistogramBinReturnType)),
 	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 	                           HistogramBinBindFunction<HistogramExact>, nullptr);
 	return function;

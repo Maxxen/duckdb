@@ -600,26 +600,34 @@ AggregateFunction GetDecimalSumAggregate(PhysicalType type) {
 //! The digits a wide decimal sum adds to the width of its input, enough for the sum of 2^64 values
 static constexpr uint32_t WIDE_SUM_EXTRA_DIGITS = 20;
 
+//! The sum of decimals of at most 38 digits is a decimal of 38 digits. Wide decimals sum their BIGNUM blobs exactly:
+//! 20 more digits hold the sum of any number of rows (below 2^64)
+LogicalType DecimalSumReturnType(ResolveReturnTypeInput &input) {
+	auto &decimal_type = input.GetArgumentType(0);
+	if (decimal_type.id() != LogicalTypeId::DECIMAL) {
+		// the bind rejects the argument
+		return decimal_type;
+	}
+	const auto scale = DecimalType::GetScale(decimal_type);
+	if (decimal_type.InternalType() != PhysicalType::VARCHAR) {
+		return LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT128, scale);
+	}
+	const auto input_width = DecimalType::GetWidth(decimal_type);
+	const auto result_width = input.GetDecimalWidthLimit().CheckedWidth(idx_t(input_width) + WIDE_SUM_EXTRA_DIGITS,
+	                                                                    input_width, "The sum");
+	return LogicalType::DECIMAL(result_width, scale);
+}
+
 unique_ptr<FunctionData> BindDecimalSum(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
 	auto decimal_type = BindDecimalArgument(input.GetClientContext(), arguments[0], "sum");
 	if (decimal_type.InternalType() == PhysicalType::VARCHAR) {
-		// wide decimals sum their BIGNUM blobs exactly: 20 more digits hold the sum of any number of rows (below 2^64)
-		const auto input_width = DecimalType::GetWidth(decimal_type);
-		const auto result_width = input.GetDecimalWidthLimit().CheckedWidth(idx_t(input_width) + WIDE_SUM_EXTRA_DIGITS,
-		                                                                    input_width, "The sum");
-		function.ReplaceImplementation(input.GetClientContext(), GetWideDecimalSumAggregate());
-		function.SetName("sum");
-		function.GetArguments()[0] = decimal_type;
-		function.SetReturnType(LogicalType::DECIMAL(result_width, DecimalType::GetScale(decimal_type)));
-		function.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
-		return nullptr;
+		function.ReplaceKernel(GetWideDecimalSumAggregate());
+	} else {
+		function.ReplaceKernel(GetDecimalSumAggregate(decimal_type.InternalType()));
 	}
-	function.ReplaceImplementation(input.GetClientContext(), GetDecimalSumAggregate(decimal_type.InternalType()));
 	function.SetName("sum");
-	function.GetArguments()[0] = decimal_type;
-	function.SetReturnType(LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT128, DecimalType::GetScale(decimal_type)));
 	function.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
 	return nullptr;
 }
@@ -838,13 +846,12 @@ AggregateFunction GetWideDecimalSumAggregate() {
 AggregateFunctionSet SumFun::GetFunctions() {
 	AggregateFunctionSet sum;
 	// decimal
-	// the bind selects the decimal the sum is returned as
 	AggregateFunction decimal_sum(
 	    FunctionSignature()
 	        .AddVariable("W", TypeVariable::Kind::INTEGER)
 	        .AddVariable("S", TypeVariable::Kind::INTEGER)
 	        .AddParameter("arg", TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S")))
-	        .SetReturnType(ReturnType::ANY()),
+	        .SetReturnType(ReturnType::ANY(DecimalSumReturnType)),
 	    nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr,
 	    BindDecimalSum);
 	sum.AddFunction(decimal_sum);

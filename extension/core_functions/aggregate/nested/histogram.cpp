@@ -280,8 +280,7 @@ unique_ptr<FunctionData> HistogramBindFunction(BindAggregateFunctionInput &input
 	if (arguments[0]->GetReturnType().id() == LogicalTypeId::UNKNOWN) {
 		throw ParameterNotResolvedException();
 	}
-	function.ReplaceImplementation(input.GetClientContext(),
-	                               GetHistogramFunction<IS_ORDERED>(arguments[0]->GetReturnType()));
+	function.ReplaceKernel(GetHistogramFunction<IS_ORDERED>(arguments[0]->GetReturnType()));
 	function.SetRewriteCallback(RewriteHistogram, AggregateRewritePolicy::MANDATORY);
 	return make_uniq<VariableReturnBindData>(function.GetReturnType());
 }
@@ -294,7 +293,7 @@ AggregateFunctionSet HistogramFun::GetFunctions() {
 	                                     FunctionSignature()
 	                                         .AddVariable("T")
 	                                         .AddParameter("arg", TypeName::VARIABLE("T"))
-	                                         .SetReturnType(ReturnType::ANY()),
+	                                         .SetReturnType(TypeName::MAP(TypeName::VARIABLE("T"), LogicalType::UBIGINT)),
 	                                     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, HistogramBindFunction,
 	                                     nullptr);
 	fun.AddFunction(HistogramFun::BinnedHistogramFunction());
@@ -307,7 +306,7 @@ AggregateFunction HistogramFun::GetHistogramUnorderedMap(LogicalType &type) {
 	                           FunctionSignature()
 	                               .AddVariable("T")
 	                               .AddParameter("arg", TypeName::VARIABLE("T"))
-	                               .SetReturnType(ReturnType::ANY()),
+	                               .SetReturnType(TypeName::MAP(TypeName::VARIABLE("T"), LogicalType::UBIGINT)),
 	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, HistogramBindFunction<false>,
 	                           nullptr);
 	return function;

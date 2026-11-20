@@ -761,13 +761,11 @@ unique_ptr<FunctionData> BindDecimalAvg(BindAggregateFunctionInput &input) {
 	auto decimal_type = BindDecimalArgument(input.GetClientContext(), arguments[0], "avg");
 	if (decimal_type.InternalType() == PhysicalType::VARCHAR) {
 		// the bignum_t tier of decimals sums its BIGNUM blobs
-		function.ReplaceImplementation(input.GetClientContext(), GetBignumAverageAggregate());
+		function.ReplaceKernel(GetBignumAverageAggregate());
 	} else {
-		function.ReplaceImplementation(input.GetClientContext(), GetAverageAggregate(decimal_type.InternalType()));
+		function.ReplaceKernel(GetAverageAggregate(decimal_type.InternalType()));
 	}
 	function.SetName("avg");
-	function.GetArguments()[0] = decimal_type;
-	function.SetReturnType(LogicalType::DOUBLE);
 	const auto scale = DecimalType::GetScale(decimal_type);
 	return make_uniq<AverageDecimalBindData>(DecimalScaleFactor(scale), scale);
 }
@@ -782,22 +780,20 @@ AggregateFunction GetTimestampAverage() {
 }
 
 //! Averages the argument as a TIMESTAMP, whose range holds every ordinary date of the lower precisions
-unique_ptr<FunctionData> BindWidenedTimestampAvg(BindAggregateFunctionInput &input) {
-	auto &function = input.GetBoundFunction();
-	function.ReplaceImplementation(input.GetClientContext(), GetTimestampAverage());
-	function.SetName("avg");
-	function.GetArguments()[0] = LogicalType::TIMESTAMP;
-	function.SetReturnType(LogicalType::TIMESTAMP);
-	return nullptr;
+LogicalType WidenedTimestampAvgResolveTypes(ResolveReturnTypeInput &input) {
+	input.CastArgument(0, LogicalType::TIMESTAMP);
+	return LogicalType::TIMESTAMP;
 }
 
 //! Without an overload of their own, TIMESTAMP_S, TIMESTAMP_MS and DATE would widen to TIMESTAMP_NS, the cheapest
 //! implicit cast, whose range is far smaller than theirs
 AggregateFunction GetWidenedTimestampAverage(const LogicalType &type) {
-	// stub function, the bind sets the TIMESTAMP implementation and the argument type it casts to
-	AggregateFunction fun({}, LogicalType::TIMESTAMP, nullptr, nullptr, nullptr, nullptr, nullptr,
-	                      FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr, BindWidenedTimestampAvg);
-	fun.GetSignature().AddParameter("x", type);
+	// the TIMESTAMP implementation, declared for a type that is cast to TIMESTAMP
+	auto fun = AggregateFunction::UnaryAggregate<AvgState<hugeint_t>, int64_t, int64_t, TimestampAverageOperation>(
+	    type, LogicalType::TIMESTAMP);
+	fun.GetSignature().GetParameter(0).SetName("x");
+	fun.GetSignature().SetReturnType(ReturnType::ANY(WidenedTimestampAvgResolveTypes));
+	fun.SetStructStateExport(TimestampAverageStateLayout);
 	return fun;
 }
 
@@ -812,7 +808,7 @@ AggregateFunctionSet AvgFun::GetFunctions() {
 	        .AddVariable("W", TypeVariable::Kind::INTEGER)
 	        .AddVariable("S", TypeVariable::Kind::INTEGER)
 	        .AddParameter("x", TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S")))
-	        .SetReturnType(ReturnType::ANY()),
+	        .SetReturnType(LogicalType::DOUBLE),
 	    nullptr, nullptr, nullptr, nullptr, nullptr, FunctionNullHandling::DEFAULT_NULL_HANDLING, nullptr,
 	    BindDecimalAvg);
 	avg.AddFunction(decimal_avg);

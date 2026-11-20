@@ -626,7 +626,7 @@ AggregateFunction GetModeAggregate(const LogicalType &type) {
 unique_ptr<FunctionData> BindModeAggregate(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
-	function.ReplaceImplementation(input.GetClientContext(), GetModeAggregate(arguments[0]->GetReturnType()));
+	function.ReplaceKernel(GetModeAggregate(arguments[0]->GetReturnType()));
 	function.SetName("mode");
 	function.SetRewriteCallback(RewriteMode, AggregateRewritePolicy::MANDATORY);
 	function.SetStatisticsCallback(AggregateFunction::PropagateInputValueStats);
@@ -772,7 +772,7 @@ AggregateFunction GetEntropyFunction(const LogicalType &type) {
 unique_ptr<FunctionData> BindEntropyAggregate(BindAggregateFunctionInput &input) {
 	auto &function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
-	function.ReplaceImplementation(input.GetClientContext(), GetEntropyFunction(arguments[0]->GetReturnType()));
+	function.ReplaceKernel(GetEntropyFunction(arguments[0]->GetReturnType()));
 	function.SetName("entropy");
 	function.SetRewriteCallback(RewriteEntropy, AggregateRewritePolicy::MANDATORY);
 	return nullptr;

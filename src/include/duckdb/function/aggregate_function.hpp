@@ -955,6 +955,9 @@ public:
 
 class BoundAggregateFunction : public BaseAggregateFunction, public BoundSimpleFunction {
 public:
+	//! Swap in the kernel of another function: its callbacks and properties. The name and the types this function is
+	//! bound to stay as they are
+	void ReplaceKernel(const AggregateFunction &kernel);
 	//! Swap in a different implementation, keeping the definition this was bound from intact
 	void ReplaceImplementation(ClientContext &context, const AggregateFunction &function);
 	//! The same, bound to the types the caller resolved itself rather than to the ones the implementation declares
