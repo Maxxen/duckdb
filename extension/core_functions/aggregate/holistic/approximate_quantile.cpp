@@ -406,10 +406,15 @@ AggregateFunction GetApproximateQuantileAggregateFunction(const LogicalType &typ
 	}
 }
 
-//! Wide decimals have no approximate quantile of their own, they are aggregated as DOUBLE
-LogicalType ApproxQuantileInputType(const LogicalType &type) {
-	if (type.id() == LogicalTypeId::DECIMAL && Decimal::IsWide(DecimalType::GetWidth(type))) {
-		return LogicalType::DOUBLE;
+//! Wide decimals have no approximate quantile of their own, they are aggregated as DOUBLE. Returns the type the
+//! input is aggregated as
+LogicalType WidenApproxQuantileDecimal(BindAggregateFunctionInput &input, bool is_list) {
+	auto &function = input.GetBoundFunction();
+	auto type = input.GetArguments()[0]->GetReturnType();
+	if (Decimal::IsWide(DecimalType::GetWidth(type))) {
+		type = LogicalType::DOUBLE;
+		function.GetArguments()[0] = type;
+		function.SetReturnType(is_list ? LogicalType::LIST(type) : type);
 	}
 	return type;
 }
@@ -469,34 +474,16 @@ unique_ptr<FunctionData> BindApproxQuantile(BindAggregateFunctionInput &input) {
 	return make_uniq<ApproximateQuantileBindData>(quantiles);
 }
 
-AggregateFunction ApproxQuantileDecimalFunction(const LogicalType &type) {
+//! The kernel of a decimal, or of the DOUBLE that a wide decimal is aggregated as
+AggregateFunction ApproxQuantileDecimalKernel(const LogicalType &type) {
 	auto function = GetApproximateQuantileDecimalAggregateFunction(type);
-	function.SetName("approx_quantile");
-	function.SetSerializeCallback(ApproximateQuantileBindData::Serialize);
-	function.SetDeserializeCallback(ApproximateQuantileBindData::Deserialize);
 	function.SetStateExportCallbacks(ApproxQuantileGetStateType, ApproxQuantileExportState, ApproxQuantileImportState);
 	return function;
 }
 
-//! Specialises a stub function, the DECIMAL ones to the implementation over the DECIMAL's physical type and the
-//! TIMESTAMP_S and TIMESTAMP_MS ones to the TIMESTAMP implementation. The implementation only declares the input
-//! argument, so the quantile argument that BindApproxQuantile folded into the bind data is restored afterwards.
-void ReplaceApproxQuantileImplementation(ClientContext &context, BoundAggregateFunction &function,
-                                         const AggregateFunction &implementation) {
-	auto declared_arguments = function.GetArguments();
-	function.ReplaceImplementation(context, implementation);
-	for (idx_t i = function.GetArguments().size(); i < declared_arguments.size(); i++) {
-		function.GetArguments().push_back(declared_arguments[i]);
-	}
-}
-
 unique_ptr<FunctionData> BindApproxQuantileDecimal(BindAggregateFunctionInput &input) {
-	auto &function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	auto decimal_type = ApproxQuantileInputType(arguments[0]->GetReturnType());
 	auto bind_data = BindApproxQuantile(input);
-	ReplaceApproxQuantileImplementation(input.GetClientContext(), function,
-	                                    ApproxQuantileDecimalFunction(decimal_type));
+	input.GetBoundFunction().ReplaceKernel(ApproxQuantileDecimalKernel(WidenApproxQuantileDecimal(input, false)));
 	return bind_data;
 }
 
@@ -609,22 +596,15 @@ AggregateFunction GetApproxQuantileListAggregateFunction(const LogicalType &type
 	}
 }
 
-AggregateFunction ApproxQuantileDecimalListFunction(const LogicalType &type) {
+AggregateFunction ApproxQuantileDecimalListKernel(const LogicalType &type) {
 	auto function = GetApproxQuantileListAggregateFunction(type);
-	function.SetName("approx_quantile");
-	function.SetSerializeCallback(ApproximateQuantileBindData::Serialize);
-	function.SetDeserializeCallback(ApproximateQuantileBindData::Deserialize);
 	function.SetStateExportCallbacks(ApproxQuantileGetStateType, ApproxQuantileExportState, ApproxQuantileImportState);
 	return function;
 }
 
 unique_ptr<FunctionData> BindApproxQuantileDecimalList(BindAggregateFunctionInput &input) {
-	auto &function = input.GetBoundFunction();
-	auto &arguments = input.GetArguments();
-	auto decimal_type = ApproxQuantileInputType(arguments[0]->GetReturnType());
 	auto bind_data = BindApproxQuantile(input);
-	ReplaceApproxQuantileImplementation(input.GetClientContext(), function,
-	                                    ApproxQuantileDecimalListFunction(decimal_type));
+	input.GetBoundFunction().ReplaceKernel(ApproxQuantileDecimalListKernel(WidenApproxQuantileDecimal(input, true)));
 	return bind_data;
 }
 
@@ -645,19 +625,21 @@ unique_ptr<FunctionData> ApproxQuantileDecimalDeserialize(Deserializer &deserial
                                                           BoundAggregateFunction &function) {
 	auto bind_data = ApproximateQuantileBindData::Deserialize(deserializer, function);
 	auto &return_type = deserializer.Get<const LogicalType &>();
-	// the kernel returns the type it aggregates - in plans written before v2.0 the integer the DECIMAL is stored as
-	if (return_type.id() == LogicalTypeId::LIST) {
-		ReplaceApproxQuantileImplementation(deserializer.Get<ClientContext &>(), function,
-		                                    ApproxQuantileDecimalListFunction(ListType::GetChildType(return_type)));
-	} else {
-		ReplaceApproxQuantileImplementation(deserializer.Get<ClientContext &>(), function,
-		                                    ApproxQuantileDecimalFunction(return_type));
+	auto input_type = function.GetArguments()[0];
+	if (!return_type.IsAggregateState()) {
+		// the function returns the type it aggregates - before v2.0 the integer the DECIMAL is stored as
+		input_type = return_type.id() == LogicalTypeId::LIST ? ListType::GetChildType(return_type) : return_type;
+		function.GetArguments()[0] = input_type;
+		function.SetReturnType(return_type);
 	}
+	const bool is_list = function.GetArguments()[1].id() == LogicalTypeId::LIST;
+	function.ReplaceKernel(is_list ? ApproxQuantileDecimalListKernel(input_type)
+	                               : ApproxQuantileDecimalKernel(input_type));
 	return bind_data;
 }
 
 AggregateFunction GetApproxQuantileDecimal() {
-	// stub function - the actual function is set during bind or deserialize
+	// stub function - the kernel is set during bind or deserialize
 	auto decimal_type = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
 	AggregateFunction fun(FunctionSignature()
 	                          .AddVariable("W", TypeVariable::Kind::INTEGER)
@@ -671,39 +653,26 @@ AggregateFunction GetApproxQuantileDecimal() {
 	return fun;
 }
 
-//! The TIMESTAMP implementation, which TIMESTAMP_S and TIMESTAMP_MS arguments are widened to
-AggregateFunction ApproxQuantileTimestampFunction() {
-	auto function = GetApproximateQuantileAggregateFunction(LogicalType::TIMESTAMP);
-	function.SetName("approx_quantile");
-	function.SetSerializeCallback(ApproximateQuantileBindData::Serialize);
-	function.SetDeserializeCallback(ApproximateQuantileBindData::Deserialize);
-	function.SetStateExportCallbacks(ApproxQuantileGetStateType, ApproxQuantileExportState, ApproxQuantileImportState);
-	return function;
-}
-
-unique_ptr<FunctionData> BindApproxQuantileWidenedTimestamp(BindAggregateFunctionInput &input) {
-	auto &function = input.GetBoundFunction();
-	auto bind_data = BindApproxQuantile(input);
-	ReplaceApproxQuantileImplementation(input.GetClientContext(), function, ApproxQuantileTimestampFunction());
-	function.GetArguments()[0] = LogicalType::TIMESTAMP;
-	function.SetReturnType(LogicalType::TIMESTAMP);
-	return bind_data;
+//! Aggregates the argument as a TIMESTAMP, whose range holds every value of the lower precisions
+LogicalType ApproxQuantileWidenedTimestampResolveTypes(ResolveReturnTypeInput &input) {
+	input.CastArgument(0, LogicalType::TIMESTAMP);
+	return LogicalType::TIMESTAMP;
 }
 
 //! Without an overload of their own, TIMESTAMP_S and TIMESTAMP_MS would widen to TIMESTAMP_NS, the cheapest implicit
 //! cast, whose range is far smaller than theirs
 AggregateFunction GetApproxQuantileWidenedTimestamp(const LogicalType &type) {
-	// stub function, the bind sets the TIMESTAMP implementation and the argument type it casts to
-	AggregateFunction fun({}, LogicalType::TIMESTAMP, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-	                      BindApproxQuantileWidenedTimestamp);
-	fun.GetSignature().AddParameter("x", type).AddParameter("pos", LogicalType::FLOAT);
-	fun.SetSerializeCallback(ApproximateQuantileBindData::Serialize);
-	fun.SetDeserializeCallback(ApproximateQuantileBindData::Deserialize);
+	// the TIMESTAMP function, declared for a type that is cast to TIMESTAMP
+	auto fun = GetApproximateQuantileAggregate(LogicalType::TIMESTAMP);
+	fun.GetSignature() = FunctionSignature()
+	                         .AddParameter("x", type)
+	                         .AddParameter("pos", LogicalType::FLOAT)
+	                         .SetReturnType(ReturnType::ANY(ApproxQuantileWidenedTimestampResolveTypes));
 	return fun;
 }
 
 AggregateFunction GetApproxQuantileDecimalList() {
-	// stub function - the actual function is set during bind or deserialize
+	// stub function - the kernel is set during bind or deserialize
 	auto decimal_type = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
 	AggregateFunction fun(FunctionSignature()
 	                          .AddVariable("W", TypeVariable::Kind::INTEGER)

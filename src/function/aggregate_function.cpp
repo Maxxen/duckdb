@@ -143,8 +143,17 @@ bool BoundAggregateFunction::operator!=(const BoundAggregateFunction &rhs) const
 }
 
 void BoundAggregateFunction::ReplaceKernel(const AggregateFunction &kernel) {
+	// how the function is bound and written to a plan is not part of the kernel
+	const auto bind = callbacks.bind;
+	const auto unbind = callbacks.unbind;
+	const auto serialize = callbacks.serialize;
+	const auto deserialize = callbacks.deserialize;
 	properties = kernel.GetProperties();
 	callbacks = kernel.GetCallbacks();
+	callbacks.bind = bind;
+	callbacks.unbind = unbind;
+	callbacks.serialize = serialize;
+	callbacks.deserialize = deserialize;
 	function_info = kernel.GetFunctionInfo();
 }
 
@@ -152,20 +161,6 @@ void BoundAggregateFunction::ReplaceImplementation(const BoundAggregateFunction 
 	BaseAggregateFunction::operator=(function);
 	BoundSimpleFunction::operator=(function);
 	SetDefinition(definition);
-}
-
-void BoundAggregateFunction::ReplaceImplementation(ClientContext &context, const AggregateFunction &function) {
-	// the replacement is not called, so the types it declares are taken as they are
-	auto &replacement_signature = function.GetSignature();
-	auto parameter_types = FunctionBinder::BindParameterPatterns(&context, replacement_signature);
-	vector<LogicalType> replacement_arguments;
-	for (idx_t i = 0; i < replacement_signature.GetParameterCount(); i++) {
-		if (!replacement_signature.GetParameter(i).IsVariadic()) {
-			replacement_arguments.push_back(parameter_types[i]);
-		}
-	}
-	ReplaceImplementation(function, std::move(replacement_arguments),
-	                      FunctionBinder::BindReturnPattern(&context, replacement_signature));
 }
 
 void BoundAggregateFunction::ReplaceImplementation(const AggregateFunction &function, vector<LogicalType> arguments_p,

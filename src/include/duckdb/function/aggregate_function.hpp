@@ -955,14 +955,13 @@ public:
 
 class BoundAggregateFunction : public BaseAggregateFunction, public BoundSimpleFunction {
 public:
-	//! Swap in the kernel of another function: its callbacks and properties. The name and the types this function is
-	//! bound to stay as they are
+	//! Swap in the kernel of another function: its callbacks and properties. The name, the types this function is
+	//! bound to and its bind and (de)serialize callbacks stay as they are
 	void ReplaceKernel(const AggregateFunction &kernel);
-	//! Swap in a different implementation, keeping the definition this was bound from intact
-	void ReplaceImplementation(ClientContext &context, const AggregateFunction &function);
-	//! The same, bound to the types the caller resolved itself rather than to the ones the implementation declares
+	//! Become a different function bound to the given types, keeping the definition this was bound from intact
 	void ReplaceImplementation(const AggregateFunction &function, vector<LogicalType> arguments,
 	                           LogicalType return_type);
+	//! Become the function another call was bound to, keeping the definition this was bound from intact
 	void ReplaceImplementation(const BoundAggregateFunction &function);
 
 	DUCKDB_API bool operator==(const BoundAggregateFunction &rhs) const;

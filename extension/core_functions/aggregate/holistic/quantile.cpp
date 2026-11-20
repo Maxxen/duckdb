@@ -729,41 +729,82 @@ static LogicalType InterpolationType(const LogicalType &type) {
 	return type;
 }
 
+//! The type a median is computed over: unsigned integers and wide decimals are interpolated as DOUBLE
+static LogicalType MedianInputType(const LogicalType &type) {
+	auto input_type = InterpolationType(type);
+	if (!CanInterpolate(input_type)) {
+		return input_type;
+	}
+	switch (input_type.id()) {
+	case LogicalTypeId::UTINYINT:
+	case LogicalTypeId::USMALLINT:
+	case LogicalTypeId::UINTEGER:
+	case LogicalTypeId::UBIGINT:
+	case LogicalTypeId::UHUGEINT:
+		return LogicalType::DOUBLE;
+	default:
+		return input_type;
+	}
+}
+
+//! The type a median returns: types that cannot be interpolated return one of their values
+static LogicalType MedianReturnType(const LogicalType &type) {
+	auto input_type = MedianInputType(type);
+	if (!CanInterpolate(input_type)) {
+		return input_type;
+	}
+	switch (input_type.id()) {
+	case LogicalTypeId::SQLNULL:
+	case LogicalTypeId::TINYINT:
+	case LogicalTypeId::SMALLINT:
+	case LogicalTypeId::INTEGER:
+	case LogicalTypeId::BIGINT:
+	case LogicalTypeId::HUGEINT:
+		return LogicalType::DOUBLE;
+	case LogicalTypeId::DATE:
+		return LogicalType::TIMESTAMP;
+	default:
+		return input_type;
+	}
+}
+
 struct MedianFunction {
-	static AggregateFunction GetAggregate(const LogicalType &type) {
-		auto fun = CanInterpolate(type) ? GetContinuousQuantile(type) : GetDiscreteQuantile(type);
-		fun.SetName("median");
-		fun.SetSerializeCallback(QuantileBindData::Serialize);
-		fun.SetDeserializeCallback(Deserialize);
-		return fun;
+	//! Types that can be interpolated have the continuous median, the others the discrete one
+	static AggregateFunction GetKernel(const LogicalType &type) {
+		return CanInterpolate(type) ? GetContinuousQuantile(type) : GetDiscreteQuantile(type);
 	}
 
 	static unique_ptr<FunctionData> Deserialize(Deserializer &deserializer, BoundAggregateFunction &function) {
 		auto bind_data = QuantileBindData::Deserialize(deserializer, function);
-
 		auto &input_type = function.GetArguments()[0];
-		function.ReplaceImplementation(deserializer.Get<ClientContext &>(), GetAggregate(input_type));
+		function.ReplaceKernel(GetKernel(input_type));
+		function.SetReturnType(MedianReturnType(input_type));
 		return bind_data;
 	}
 
 	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
-		auto &function = input.GetBoundFunction();
-		auto &arguments = input.GetArguments();
-		function.ReplaceImplementation(input.GetClientContext(),
-		                               GetAggregate(InterpolationType(arguments[0]->GetReturnType())));
+		// the argument was cast to the type it is aggregated as
+		input.GetBoundFunction().ReplaceKernel(GetKernel(input.GetArguments()[0]->GetReturnType()));
 		return make_uniq<QuantileBindData>(Value::DECIMAL(int16_t(5), 2, 1));
 	}
 };
 
+//! Casts the argument to the type its median is computed over
+static LogicalType MedianResolveTypes(ResolveReturnTypeInput &input) {
+	auto &type = input.GetArgumentType(0);
+	if (type.id() == LogicalTypeId::UNKNOWN) {
+		throw ParameterNotResolvedException();
+	}
+	auto input_type = MedianInputType(type);
+	if (input_type != type) {
+		input.CastArgument(0, input_type);
+	}
+	return MedianReturnType(input_type);
+}
+
 struct DiscreteQuantileListFunction {
-	static AggregateFunction GetAggregate(const LogicalType &type) {
+	static AggregateFunction GetKernel(const LogicalType &type) {
 		auto fun = GetDiscreteQuantileList(type);
-		fun.SetName("quantile_disc");
-		fun.SetBindCallback(Bind);
-		fun.SetSerializeCallback(QuantileBindData::Serialize);
-		fun.SetDeserializeCallback(Deserialize);
-		// temporarily push an argument so we can bind the actual quantile
-		fun.GetSignature().AddParameter("quantile", LogicalType::LIST(LogicalType::DOUBLE));
 		fun.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
 		fun.SetIsHolistic(true);
 		return fun;
@@ -771,9 +812,7 @@ struct DiscreteQuantileListFunction {
 
 	static unique_ptr<FunctionData> Deserialize(Deserializer &deserializer, BoundAggregateFunction &function) {
 		auto bind_data = QuantileBindData::Deserialize(deserializer, function);
-
-		auto &input_type = function.GetArguments()[0];
-		function.ReplaceImplementation(deserializer.Get<ClientContext &>(), GetAggregate(input_type));
+		function.ReplaceKernel(GetKernel(function.GetArguments()[0]));
 		if (HasExtremeDecimalQuantile(bind_data->Cast<QuantileBindData>())) {
 			function.SetFallible();
 		}
@@ -782,8 +821,8 @@ struct DiscreteQuantileListFunction {
 
 	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
 		auto &function = input.GetBoundFunction();
-		auto &arguments = input.GetArguments();
-		function.ReplaceImplementation(input.GetClientContext(), GetAggregate(arguments[0]->GetReturnType()));
+		function.ReplaceKernel(GetKernel(input.GetArguments()[0]->GetReturnType()));
+		function.SetName("quantile_disc");
 		auto bind_data = BindQuantile(input);
 		if (HasExtremeDecimalQuantile(bind_data->Cast<QuantileBindData>())) {
 			function.SetFallible();
@@ -793,14 +832,8 @@ struct DiscreteQuantileListFunction {
 };
 
 struct DiscreteQuantileFunction {
-	static AggregateFunction GetAggregate(const LogicalType &type) {
+	static AggregateFunction GetKernel(const LogicalType &type) {
 		auto fun = GetDiscreteQuantile(type);
-		fun.SetName("quantile_disc");
-		fun.SetBindCallback(Bind);
-		fun.SetSerializeCallback(QuantileBindData::Serialize);
-		fun.SetDeserializeCallback(Deserialize);
-		// temporarily push an argument so we can bind the actual quantile
-		fun.GetSignature().AddParameter("quantile", LogicalType::DOUBLE);
 		fun.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
 		fun.SetIsHolistic(true);
 		return fun;
@@ -808,16 +841,17 @@ struct DiscreteQuantileFunction {
 
 	static unique_ptr<FunctionData> Deserialize(Deserializer &deserializer, BoundAggregateFunction &function) {
 		auto bind_data = QuantileBindData::Deserialize(deserializer, function);
-		auto &quantile_data = bind_data->Cast<QuantileBindData>();
-
 		auto &input_type = function.GetArguments()[0];
-		if (quantile_data.quantiles.size() == 1) {
-			function.ReplaceImplementation(deserializer.Get<ClientContext &>(), GetAggregate(input_type));
-		} else {
-			function.ReplaceImplementation(deserializer.Get<ClientContext &>(),
-			                               DiscreteQuantileListFunction::GetAggregate(input_type));
+		// plans written before v2.0 record the list form without its quantile argument, as this function
+		auto &return_type = deserializer.Get<const LogicalType &>();
+		bool is_list = return_type != input_type && return_type.id() == LogicalTypeId::LIST &&
+		               ListType::GetChildType(return_type) == input_type;
+		if (return_type.IsAggregateState()) {
+			// an exported state does not record what the function returns
+			is_list = bind_data->Cast<QuantileBindData>().quantiles.size() != 1;
 		}
-		if (HasExtremeDecimalQuantile(quantile_data)) {
+		function.ReplaceKernel(is_list ? DiscreteQuantileListFunction::GetKernel(input_type) : GetKernel(input_type));
+		if (HasExtremeDecimalQuantile(bind_data->Cast<QuantileBindData>())) {
 			function.SetFallible();
 		}
 		return bind_data;
@@ -825,8 +859,8 @@ struct DiscreteQuantileFunction {
 
 	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
 		auto &function = input.GetBoundFunction();
-		auto &arguments = input.GetArguments();
-		function.ReplaceImplementation(input.GetClientContext(), GetAggregate(arguments[0]->GetReturnType()));
+		function.ReplaceKernel(GetKernel(input.GetArguments()[0]->GetReturnType()));
+		function.SetName("quantile_disc");
 		auto bind_data = BindQuantile(input);
 		if (HasExtremeDecimalQuantile(bind_data->Cast<QuantileBindData>())) {
 			function.SetFallible();
@@ -835,15 +869,11 @@ struct DiscreteQuantileFunction {
 	}
 };
 
-struct ContinuousQuantileFunction {
-	static AggregateFunction GetAggregate(const LogicalType &type) {
-		auto fun = GetContinuousQuantile(type);
-		fun.SetName("quantile_cont");
-		fun.SetBindCallback(Bind);
-		fun.SetSerializeCallback(QuantileBindData::Serialize);
-		fun.SetDeserializeCallback(Deserialize);
-		// temporarily push an argument so we can bind the actual quantile
-		fun.GetSignature().AddParameter("quantile", LogicalType::DOUBLE);
+//! Continuous quantiles of a decimal are of that decimal. The kernel depends on how the decimal is stored
+template <bool IS_LIST>
+struct ContinuousQuantileDecimalFunction {
+	static AggregateFunction GetKernel(const LogicalType &type) {
+		auto fun = IS_LIST ? GetContinuousQuantileList(type) : GetContinuousQuantile(type);
 		fun.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
 		fun.SetIsHolistic(true);
 		return fun;
@@ -851,56 +881,40 @@ struct ContinuousQuantileFunction {
 
 	static unique_ptr<FunctionData> Deserialize(Deserializer &deserializer, BoundAggregateFunction &function) {
 		auto bind_data = QuantileBindData::Deserialize(deserializer, function);
-
-		auto &input_type = function.GetArguments()[0];
-		function.ReplaceImplementation(deserializer.Get<ClientContext &>(), GetAggregate(input_type));
+		function.ReplaceKernel(GetKernel(function.GetArguments()[0]));
 		return bind_data;
 	}
 
 	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
 		auto &function = input.GetBoundFunction();
-		auto &arguments = input.GetArguments();
-		auto impl = GetAggregate(function.GetArguments()[0].id() == LogicalTypeId::DECIMAL
-		                             ? InterpolationType(arguments[0]->GetReturnType())
-		                             : function.GetArguments()[0]);
-		function.ReplaceImplementation(input.GetClientContext(), impl);
+		auto type = InterpolationType(input.GetArguments()[0]->GetReturnType());
+		if (type.id() != LogicalTypeId::DECIMAL) {
+			// a wide decimal is interpolated as DOUBLE
+			function.GetArguments()[0] = type;
+			function.SetReturnType(IS_LIST ? LogicalType::LIST(type) : type);
+		}
+		function.ReplaceKernel(GetKernel(type));
 		return BindQuantile(input);
 	}
 };
 
-struct ContinuousQuantileListFunction {
-	static AggregateFunction GetAggregate(const LogicalType &type) {
-		auto fun = GetContinuousQuantileList(type);
-		fun.SetName("quantile_cont");
-		fun.SetBindCallback(Bind);
-		fun.SetSerializeCallback(QuantileBindData::Serialize);
-		fun.SetDeserializeCallback(Deserialize);
-		// temporarily push an argument so we can bind the actual quantile
-		auto list_of_double = LogicalType::LIST(LogicalType::DOUBLE);
-		fun.GetSignature().AddParameter("quantile", list_of_double);
-		fun.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
-		fun.SetIsHolistic(true);
-		return fun;
-	}
-
-	static unique_ptr<FunctionData> Deserialize(Deserializer &deserializer, BoundAggregateFunction &function) {
-		auto bind_data = QuantileBindData::Deserialize(deserializer, function);
-
-		auto &input_type = function.GetArguments()[0];
-		function.ReplaceImplementation(deserializer.Get<ClientContext &>(), GetAggregate(input_type));
-		return bind_data;
-	}
-
-	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
-		auto &function = input.GetBoundFunction();
-		auto &arguments = input.GetArguments();
-		auto impl = GetAggregate(function.GetArguments()[0].id() == LogicalTypeId::DECIMAL
-		                             ? InterpolationType(arguments[0]->GetReturnType())
-		                             : function.GetArguments()[0]);
-		function.ReplaceImplementation(input.GetClientContext(), impl);
-		return BindQuantile(input);
-	}
-};
+//! The continuous quantile of a type other than DECIMAL: each type has an overload that declares what it returns
+template <bool IS_LIST>
+static AggregateFunction GetContinuousQuantileOverload(const LogicalType &type) {
+	auto fun = IS_LIST ? GetContinuousQuantileList(type) : GetContinuousQuantile(type);
+	const auto return_type = fun.GetSignature().GetReturnType();
+	fun.GetSignature() =
+	    FunctionSignature()
+	        .AddParameter("x", type)
+	        .AddParameter("quantile", IS_LIST ? LogicalType::LIST(LogicalType::DOUBLE) : LogicalType::DOUBLE)
+	        .SetReturnType(return_type);
+	fun.SetBindCallback(BindQuantile);
+	fun.SetSerializeCallback(QuantileBindData::Serialize);
+	fun.SetDeserializeCallback(QuantileBindData::Deserialize);
+	fun.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
+	fun.SetIsHolistic(true);
+	return fun;
+}
 
 template <class OP>
 static AggregateFunction EmptyQuantileFunction(TypeName input, const ReturnType &result, const LogicalType &extra_arg,
@@ -919,18 +933,20 @@ static AggregateFunction EmptyQuantileFunction(TypeName input, const ReturnType 
 
 AggregateFunctionSet MedianFun::GetFunctions() {
 	AggregateFunctionSet set("median");
-	set.AddFunction(EmptyQuantileFunction<MedianFunction>(
-	    TypeName::VARIABLE("T"), ReturnType::ANY(), LogicalTypeId::INVALID, FunctionSignature().AddVariable("T")));
+	set.AddFunction(EmptyQuantileFunction<MedianFunction>(TypeName::VARIABLE("T"), ReturnType::ANY(MedianResolveTypes),
+	                                                      LogicalTypeId::INVALID,
+	                                                      FunctionSignature().AddVariable("T")));
 	return set;
 }
 
 AggregateFunctionSet QuantileDiscFun::GetFunctions() {
 	AggregateFunctionSet set("quantile_disc");
 	const auto any_type = FunctionSignature().AddVariable("T");
-	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileFunction>(TypeName::VARIABLE("T"), ReturnType::ANY(),
+	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileFunction>(TypeName::VARIABLE("T"), TypeName::VARIABLE("T"),
 	                                                                LogicalType::DOUBLE, any_type));
 	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileListFunction>(
-	    TypeName::VARIABLE("T"), ReturnType::ANY(), LogicalType::LIST(LogicalType::DOUBLE), any_type));
+	    TypeName::VARIABLE("T"), TypeName::LIST(TypeName::VARIABLE("T")), LogicalType::LIST(LogicalType::DOUBLE),
+	    any_type));
 	// this function is here for deserialization - it cannot be called by users
 	set.AddFunction(EmptyQuantileFunction<DiscreteQuantileFunction>(TypeName::VARIABLE("T"), ReturnType::ANY(),
 	                                                                LogicalType::INVALID, any_type));
@@ -949,14 +965,13 @@ AggregateFunctionSet QuantileContFun::GetFunctions() {
 	const auto any_decimal =
 	    FunctionSignature().AddVariable("W", TypeVariable::Kind::INTEGER).AddVariable("S", TypeVariable::Kind::INTEGER);
 	const auto decimal_type = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
-	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileFunction>(decimal_type, ReturnType::ANY(),
-	                                                                            LogicalType::DOUBLE, any_decimal));
-	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileListFunction>(
-	    decimal_type, ReturnType::ANY(), LogicalType::LIST(LogicalType::DOUBLE), any_decimal));
+	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileDecimalFunction<false>>(
+	    decimal_type, decimal_type, LogicalType::DOUBLE, any_decimal));
+	quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileDecimalFunction<true>>(
+	    decimal_type, TypeName::LIST(decimal_type), LogicalType::LIST(LogicalType::DOUBLE), any_decimal));
 	for (const auto &type : GetContinuousQuantileTypes()) {
-		quantile_cont.AddFunction(EmptyQuantileFunction<ContinuousQuantileFunction>(type, type, LogicalType::DOUBLE));
-		quantile_cont.AddFunction(
-		    EmptyQuantileFunction<ContinuousQuantileListFunction>(type, type, LogicalType::LIST(LogicalType::DOUBLE)));
+		quantile_cont.AddFunction(GetContinuousQuantileOverload<false>(type));
+		quantile_cont.AddFunction(GetContinuousQuantileOverload<true>(type));
 	}
 	return quantile_cont;
 }

@@ -211,9 +211,8 @@ struct ArgMinMaxBase {
 		auto &function = input.GetBoundFunction();
 		auto &arguments = input.GetArguments();
 		ExpressionBinder::PushCollation(context, arguments[1], arguments[1]->GetReturnType());
-		function.GetArguments()[0] = arguments[0]->GetReturnType();
+		// the value is replaced by its comparison key, which may be of another type
 		function.GetArguments()[1] = arguments[1]->GetReturnType();
-		function.SetReturnType(arguments[0]->GetReturnType());
 
 		auto function_data = make_uniq<ArgMinMaxFunctionData>(NULL_HANDLING);
 		return unique_ptr<FunctionData>(std::move(function_data));
@@ -378,9 +377,8 @@ struct VectorArgMinMaxBase : ArgMinMaxBase<COMPARATOR> {
 		auto &function = input.GetBoundFunction();
 		auto &arguments = input.GetArguments();
 		ExpressionBinder::PushCollation(context, arguments[1], arguments[1]->GetReturnType());
-		function.GetArguments()[0] = arguments[0]->GetReturnType();
+		// the value is replaced by its comparison key, which may be of another type
 		function.GetArguments()[1] = arguments[1]->GetReturnType();
-		function.SetReturnType(arguments[0]->GetReturnType());
 
 		auto function_data = make_uniq<ArgMinMaxFunctionData>(NULL_HANDLING);
 		return unique_ptr<FunctionData>(std::move(function_data));
@@ -844,7 +842,6 @@ unique_ptr<FunctionData> ArgMinMaxNBind(BindAggregateFunctionInput &input) {
 
 	const auto val_type = arguments[0]->GetReturnType().InternalType();
 	const auto arg_type = arguments[1]->GetReturnType().InternalType();
-	function.SetReturnType(LogicalType::LIST(arguments[0]->GetReturnType()));
 
 	// Specialize the function based on the input types
 	auto function_data = make_uniq<ArgMinMaxFunctionData>(NULL_HANDLING, NULLS_LAST);

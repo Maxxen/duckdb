@@ -372,14 +372,18 @@ unique_ptr<FunctionData> BindMinMax(BindAggregateFunctionInput &input) {
 		// If aggr function is min/max and uses collations, replace bound_function with arg_min/arg_max
 		// to make sure the result's correctness.
 		vector<LogicalType> types {arguments[0]->GetReturnType(), collated_arg->GetReturnType()};
-		function.ReplaceImplementation(input.GetClientContext(),
-		                               *GetCollatedMinMaxFunction(context, function.GetName(), types));
+		auto collated_function = GetCollatedMinMaxFunction(context, function.GetName(), types);
 
-		// Bind function like arg_min/arg_max: its bind selects the implementation for these types.
-		arguments.push_back(std::move(collated_arg));
-		auto bind_data = function.GetCallbacks().GetBindCallback()(input);
+		vector<unique_ptr<Expression>> collated_arguments;
+		collated_arguments.reserve(2);
+		collated_arguments.push_back(std::move(arguments[0]));
+		collated_arguments.push_back(std::move(collated_arg));
+		FunctionBinder function_binder(context);
+		auto expr = function_binder.BindAggregateFunction(collated_function, std::move(collated_arguments));
+		arguments = std::move(expr->GetChildrenMutable());
+		function.ReplaceImplementation(expr->Function());
 		function.SetSingleValueIdentity(true);
-		return bind_data;
+		return expr->BindInfo() ? expr->BindInfo()->Copy() : nullptr;
 	}
 
 	if (input_type.id() == LogicalTypeId::UNKNOWN) {

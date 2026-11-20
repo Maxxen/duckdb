@@ -1,0 +1,3 @@
+CREATE TABLE t1 (g INT, d DECIMAL(10,3), w DECIMAL(50,3), s TIMESTAMP_S);
+INSERT INTO t1 VALUES (1, 1.5, 1.5, '2020-01-01'), (1, 2.5, 2.5, '2020-01-02'), (1, 3.5, 3.5, '2020-01-03'), (2, 10.5, 10.5, '2021-01-01');
+SELECT g, approx_quantile(d, 0.5), approx_quantile(d, [0.25, 0.75]), approx_quantile(w, 0.5), approx_quantile(w, [0.5]), approx_quantile(s, 0.5), reservoir_quantile(d, 0.5), reservoir_quantile(d, [0.5]), reservoir_quantile(w, 0.5), reservoir_quantile(w, [0.5]), quantile_disc(d, 0.5), quantile_disc(d, [0.25, 0.75]), quantile(w, 0.5), quantile_disc(g, 0.5), approx_quantile(d, 0.5) OVER (PARTITION BY g) FROM t1 GROUP BY g, d ORDER BY ALL;

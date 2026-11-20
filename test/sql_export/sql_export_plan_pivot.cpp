@@ -169,7 +169,9 @@ TEST_CASE("Logical plan SQL export reconstructs list PIVOT barriers",
 	    QualifiedName(catalog.GetName(), Identifier::DefaultSchema(), Identifier("sum_no_overflow")));
 	auto sum_no_overflow = sum_no_overflow_entry.functions.GetFunctionByArguments(*connection.context,
 	                                                                              sum.Function().GetLogicalArguments());
-	sum.FunctionMutable().ReplaceImplementation(*connection.context, *sum_no_overflow);
+	auto arguments = sum.Function().GetArguments();
+	auto return_type = sum.Function().GetReturnType();
+	sum.FunctionMutable().ReplaceImplementation(*sum_no_overflow, std::move(arguments), std::move(return_type));
 	REQUIRE(sum.Function().GetName() == "sum_no_overflow");
 	REQUIRE(LogicalPlanSQLExporter::Export(*connection.context, *optimized_sum).IsSuccess());
 	RequirePivotStreamingEffects(connection);

@@ -1,0 +1,3 @@
+CREATE TABLE t1 (g INT, v INTEGER, u UINTEGER, d DECIMAL(10,3), w DECIMAL(50,3), dt DATE, s VARCHAR);
+INSERT INTO t1 VALUES (1, 1, 1, 1.5, 1.5, '2020-01-01', 'a'), (1, 2, 2, 2.5, 2.5, '2020-01-04', 'b'), (1, 4, 4, 3.5, 3.5, '2020-01-05', 'c'), (2, 10, 10, 10.5, 10.5, '2021-01-01', 'd');
+SELECT g, quantile_cont(v, 0.25), quantile_cont(v, [0.25, 0.75]), quantile_cont(u, 0.5), quantile_cont(d, 0.5), quantile_cont(d, [0.25, 0.75]), quantile_cont(w, 0.5), quantile_cont(dt, 0.5), median(v), median(u), median(d), median(w), median(dt), median(s), finalize(median(v) EXPORT_STATE), finalize(quantile_cont(d, 0.5) EXPORT_STATE), median(v) OVER (PARTITION BY g) FROM t1 GROUP BY g, v ORDER BY ALL;

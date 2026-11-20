@@ -383,7 +383,7 @@ void SumNoOverflowSerialize(Serializer &serializer, const optional_ptr<const Fun
 	                                          function.GetErrorMode() == FunctionErrors::CAN_THROW_RUNTIME_ERROR);
 }
 
-bool TryUseNoOverflowSum(ClientContext &context, BoundAggregateFunction &function, bool checked);
+bool TryUseNoOverflowSum(BoundAggregateFunction &function, bool checked);
 
 unique_ptr<FunctionData> SumNoOverflowDeserialize(Deserializer &deserializer, BoundAggregateFunction &function) {
 	bool fallible = false;
@@ -402,7 +402,7 @@ unique_ptr<FunctionData> SumNoOverflowDeserialize(Deserializer &deserializer, Bo
 	if (logical.second || (!return_type.IsAggregateState() && logical.first.GetReturnType() != return_type)) {
 		throw SerializationException("Cannot reconstruct the logical sum signature");
 	}
-	if (!TryUseNoOverflowSum(context, logical.first, fallible)) {
+	if (!TryUseNoOverflowSum(logical.first, fallible)) {
 		throw SerializationException("Cannot reconstruct the no-overflow sum implementation");
 	}
 	function = std::move(logical.first);
@@ -444,16 +444,15 @@ AggregateFunction GetSumAggregateNoOverflow(PhysicalType type, bool checked = fa
 
 //! Swaps in the int64 accumulator but keeps the bound signature (e.g. DECIMAL(15,2) -> DECIMAL(38,2)), so that binding
 //! sum_no_overflow by that signature (e.g. to finalize an exported state) yields the same state layout
-bool TryUseNoOverflowSum(ClientContext &context, BoundAggregateFunction &function, bool checked) {
+bool TryUseNoOverflowSum(BoundAggregateFunction &function, bool checked) {
 	const auto internal_type = function.GetArguments()[0].InternalType();
 	if (internal_type != PhysicalType::INT32 && internal_type != PhysicalType::INT64) {
 		return false;
 	}
 	auto arguments = function.GetArguments();
 	auto return_type = function.GetReturnType();
-	function.ReplaceImplementation(context, GetSumAggregateNoOverflow(internal_type, checked));
-	function.GetArguments() = std::move(arguments);
-	function.SetReturnType(std::move(return_type));
+	function.ReplaceImplementation(GetSumAggregateNoOverflow(internal_type, checked), std::move(arguments),
+	                               std::move(return_type));
 	return true;
 }
 
@@ -477,7 +476,7 @@ unique_ptr<FunctionData> SumNoOverflowBind(BindAggregateFunctionInput &input) {
 	auto binder = input.NestedFunctionBinder();
 	auto logical = BindLogicalSum(binder, input.GetArguments());
 	// bound by name there is no statistics proof that the int64 accumulator cannot overflow
-	TryUseNoOverflowSum(input.GetClientContext(), logical.first, true);
+	TryUseNoOverflowSum(logical.first, true);
 	input.GetBoundFunction() = std::move(logical.first);
 	return std::move(logical.second);
 }
@@ -502,7 +501,7 @@ unique_ptr<BaseStatistics> SumPropagateStats(ClientContext &context, BoundAggreg
 
 	// Replace with fast implementation when possible
 	if (bounds->min > NumericLimits<int64_t>::Minimum() && bounds->max < NumericLimits<int64_t>::Maximum()) {
-		TryUseNoOverflowSum(context, expr.FunctionMutable(), false);
+		TryUseNoOverflowSum(expr.FunctionMutable(), false);
 	}
 
 	// Propagate stats.
@@ -613,8 +612,8 @@ LogicalType DecimalSumReturnType(ResolveReturnTypeInput &input) {
 		return LogicalType::DECIMAL(Decimal::MAX_WIDTH_INT128, scale);
 	}
 	const auto input_width = DecimalType::GetWidth(decimal_type);
-	const auto result_width = input.GetDecimalWidthLimit().CheckedWidth(idx_t(input_width) + WIDE_SUM_EXTRA_DIGITS,
-	                                                                    input_width, "The sum");
+	const auto result_width =
+	    input.GetDecimalWidthLimit().CheckedWidth(idx_t(input_width) + WIDE_SUM_EXTRA_DIGITS, input_width, "The sum");
 	return LogicalType::DECIMAL(result_width, scale);
 }
 

@@ -438,7 +438,6 @@ private:
 class FunctionBinder {
 	//! These bind a function that no call is matched to, from the types it declares
 	friend class FunctionSerializer;
-	friend class BoundAggregateFunction;
 
 public:
 	DUCKDB_API explicit FunctionBinder(Binder &binder);
