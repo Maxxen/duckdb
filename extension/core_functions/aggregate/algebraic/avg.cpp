@@ -780,9 +780,10 @@ AggregateFunction GetTimestampAverage() {
 }
 
 //! Averages the argument as a TIMESTAMP, whose range holds every ordinary date of the lower precisions
-LogicalType WidenedTimestampAvgResolveTypes(ResolveReturnTypeInput &input) {
-	input.CastArgument(0, LogicalType::TIMESTAMP);
-	return LogicalType::TIMESTAMP;
+unique_ptr<FunctionData> BindWidenedTimestampAvg(BindAggregateFunctionInput &input) {
+	// the binder casts the argument to the type the function is bound to
+	input.GetBoundFunction().GetArguments()[0] = LogicalType::TIMESTAMP;
+	return nullptr;
 }
 
 //! Without an overload of their own, TIMESTAMP_S, TIMESTAMP_MS and DATE would widen to TIMESTAMP_NS, the cheapest
@@ -792,7 +793,7 @@ AggregateFunction GetWidenedTimestampAverage(const LogicalType &type) {
 	auto fun = AggregateFunction::UnaryAggregate<AvgState<hugeint_t>, int64_t, int64_t, TimestampAverageOperation>(
 	    type, LogicalType::TIMESTAMP);
 	fun.GetSignature().GetParameter(0).SetName("x");
-	fun.GetSignature().SetReturnType(ReturnType::ANY(WidenedTimestampAvgResolveTypes));
+	fun.SetBindCallback(BindWidenedTimestampAvg);
 	fun.SetStructStateExport(TimestampAverageStateLayout);
 	return fun;
 }

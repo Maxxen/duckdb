@@ -133,10 +133,11 @@ static void ConcatWSFunction(DataChunk &args, ExpressionState &state, Vector &re
 	}
 }
 
-//! The values are concatenated as strings, and the elements of lists as strings
-static LogicalType ConcatWSResolveTypes(ResolveReturnTypeInput &input) {
-	for (idx_t i = 1; i < input.GetArgumentCount(); i++) {
-		auto arg_type = input.GetArgumentType(i);
+static unique_ptr<FunctionData> BindConcatWSFunction(BindScalarFunctionInput &input) {
+	auto &args = input.GetArguments();
+	// the values are concatenated as strings, and the elements of lists as strings
+	for (idx_t i = 1; i < args.size(); i++) {
+		auto arg_type = args[i]->GetReturnType();
 		if (arg_type.id() == LogicalTypeId::LIST) {
 			auto &child_type = ListType::GetChildType(arg_type);
 			if (child_type.id() == LogicalTypeId::LIST) {
@@ -149,11 +150,6 @@ static LogicalType ConcatWSResolveTypes(ResolveReturnTypeInput &input) {
 			input.CastArgument(i, LogicalType::VARCHAR);
 		}
 	}
-	return LogicalType::VARCHAR;
-}
-
-static unique_ptr<FunctionData> BindConcatWSFunction(BindScalarFunctionInput &input) {
-	auto &args = input.GetArguments();
 	vector<bool> is_list(args.size() - 1, false);
 	for (idx_t i = 1; i < args.size(); i++) {
 		is_list[i - 1] = args[i]->GetReturnType().id() == LogicalTypeId::LIST;
@@ -176,7 +172,7 @@ ScalarFunction ConcatWsFun::GetFunction() {
 	                             .AddParameter("separator", LogicalType::VARCHAR)
 	                             .AddParameter("string", TypeName::VARIABLE("T"))
 	                             .AddArgs("args", LogicalType::ANY)
-	                             .SetReturnType(ReturnType::ANY(ConcatWSResolveTypes)),
+	                             .SetReturnType(LogicalType::VARCHAR),
 	                         ConcatWSFunction, BindConcatWSFunction);
 	concat_ws.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return ScalarFunction(concat_ws);

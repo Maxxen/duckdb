@@ -654,9 +654,10 @@ AggregateFunction GetApproxQuantileDecimal() {
 }
 
 //! Aggregates the argument as a TIMESTAMP, whose range holds every value of the lower precisions
-LogicalType ApproxQuantileWidenedTimestampResolveTypes(ResolveReturnTypeInput &input) {
-	input.CastArgument(0, LogicalType::TIMESTAMP);
-	return LogicalType::TIMESTAMP;
+unique_ptr<FunctionData> BindApproxQuantileWidenedTimestamp(BindAggregateFunctionInput &input) {
+	// the binder casts the argument to the type the function is bound to
+	input.GetBoundFunction().GetArguments()[0] = LogicalType::TIMESTAMP;
+	return BindApproxQuantile(input);
 }
 
 //! Without an overload of their own, TIMESTAMP_S and TIMESTAMP_MS would widen to TIMESTAMP_NS, the cheapest implicit
@@ -667,7 +668,8 @@ AggregateFunction GetApproxQuantileWidenedTimestamp(const LogicalType &type) {
 	fun.GetSignature() = FunctionSignature()
 	                         .AddParameter("x", type)
 	                         .AddParameter("pos", LogicalType::FLOAT)
-	                         .SetReturnType(ReturnType::ANY(ApproxQuantileWidenedTimestampResolveTypes));
+	                         .SetReturnType(LogicalType::TIMESTAMP);
+	fun.SetBindCallback(BindApproxQuantileWidenedTimestamp);
 	return fun;
 }
 

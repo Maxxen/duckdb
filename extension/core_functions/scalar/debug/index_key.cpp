@@ -269,20 +269,12 @@ unique_ptr<IndexKeyBindData> IndexKeyBindInternal(INPUT &input) {
 // for execution even though it is only required for binding. This requires us to create a key_chunk
 // that only references the key columns during execution. We could erase the path argument here, but
 // that also requires some (de)serialization boilerplate, so for now we don't do it.
-LogicalType IndexKeyResolveTypes(ResolveReturnTypeInput &input) {
-	if (input.GetArgumentCount() >= INDEX_KEY_FIXED_ARGS && input.GetConstant(0).IsNull()) {
-		// the call is NULL without looking up the index
-		return LogicalType::BLOB;
-	}
+unique_ptr<FunctionData> IndexKeyBind(BindScalarFunctionInput &input) {
 	auto bind_data = IndexKeyBindInternal(input);
 	for (idx_t i = 0; i < bind_data->key_types.size(); i++) {
 		input.CastArgument(INDEX_KEY_FIXED_ARGS + i, bind_data->key_types[i]);
 	}
-	return LogicalType::BLOB;
-}
-
-unique_ptr<FunctionData> IndexKeyBind(BindScalarFunctionInput &input) {
-	return IndexKeyBindInternal(input);
+	return std::move(bind_data);
 }
 
 void IndexKeyFunction(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -321,7 +313,7 @@ void IndexKeyFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 } // namespace
 
 ScalarFunction IndexKeyFun::GetFunction() {
-	ScalarFunction fun("index_key", {}, ReturnType::ANY(IndexKeyResolveTypes), IndexKeyFunction, IndexKeyBind);
+	ScalarFunction fun("index_key", {}, LogicalType::BLOB, IndexKeyFunction, IndexKeyBind);
 	fun.GetSignature().AddVariable("T", LogicalTypeId::STRUCT).AddParameter("path", TypeName::VARIABLE("T"));
 	fun.GetSignature().AddArgs("args", LogicalTypeId::ANY);
 	return fun;
