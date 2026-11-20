@@ -309,7 +309,7 @@ ScalarFunctionSet StCrsFun::GetFunctions() {
 }
 
 //! The geometry of the coordinate reference system the constant second argument names
-static LogicalType SetCRSReturnType(ResolveReturnTypeInput &input) {
+static LogicalType SetCRSReturnType(const ResolveReturnTypeInput &input) {
 	// Preserve the input kind (GEOMETRY vs GEOGRAPHY) in the result type.
 	const bool is_geography = input.GetArgumentType(0).id() == LogicalTypeId::GEOGRAPHY;
 	const auto make_type = [&](const string &crs) {

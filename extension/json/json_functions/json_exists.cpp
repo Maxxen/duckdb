@@ -14,7 +14,7 @@ static void ManyExistsFunction(DataChunk &args, ExpressionState &state, Vector &
 	JSONExecutors::ExecuteMany<bool, false>(args, state, result, JSONExists);
 }
 
-static LogicalType ExistsReturnType(ResolveReturnTypeInput &input) {
+static LogicalType ExistsReturnType(const ResolveReturnTypeInput &input) {
 	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::BOOLEAN);
 }
 

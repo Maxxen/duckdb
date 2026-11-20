@@ -22,7 +22,7 @@ static void StructConcatFunction(DataChunk &args, ExpressionState &state, Vector
 }
 
 //! The struct of the fields of the structs that are concatenated
-static LogicalType StructConcatReturnType(ResolveReturnTypeInput &input) {
+static LogicalType StructConcatReturnType(const ResolveReturnTypeInput &input) {
 	// collect names and deconflict, construct return type
 	if (input.GetArgumentCount() == 0) {
 		throw InvalidInputException("struct_concat: At least one argument is required");

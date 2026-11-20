@@ -38,7 +38,7 @@ static void ManyJSONKeysFunction(DataChunk &args, ExpressionState &state, Vector
 	JSONExecutors::ExecuteMany<list_entry_t>(args, state, result, GetJSONKeys);
 }
 
-static LogicalType JSONKeysReturnType(ResolveReturnTypeInput &input) {
+static LogicalType JSONKeysReturnType(const ResolveReturnTypeInput &input) {
 	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::LIST(LogicalType::VARCHAR));
 }
 

@@ -43,7 +43,7 @@ void UnionExtractFunction(DataChunk &args, ExpressionState &state, Vector &resul
 }
 
 //! The type of the member that a constant tag extracts
-LogicalType UnionExtractReturnType(ResolveReturnTypeInput &input) {
+LogicalType UnionExtractReturnType(const ResolveReturnTypeInput &input) {
 	auto &union_type = input.GetArgumentType(0);
 	auto tag = input.TryGetConstant(1);
 	if (union_type.id() == LogicalTypeId::UNION && tag && !tag->IsNull()) {

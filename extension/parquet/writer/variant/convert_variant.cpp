@@ -140,7 +140,7 @@ LogicalType VariantColumnWriter::GetParquetVariantType(optional_ptr<LogicalType>
 }
 
 //! The parquet variant, shredded to the type the constant second argument names
-static LogicalType TransformReturnType(ResolveReturnTypeInput &input) {
+static LogicalType TransformReturnType(const ResolveReturnTypeInput &input) {
 	if (input.GetArgumentCount() != 2) {
 		return VariantColumnWriter::GetParquetVariantType();
 	}

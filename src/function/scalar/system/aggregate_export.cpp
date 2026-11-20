@@ -425,7 +425,7 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(FunctionBinder &f
 }
 
 //! A state is finalized to what its aggregate returns
-LogicalType FinalizeReturnType(ResolveReturnTypeInput &input) {
+LogicalType FinalizeReturnType(const ResolveReturnTypeInput &input) {
 	auto function_binder = input.NestedFunctionBinder();
 	auto bind_data = BindAggregateStateInternal(function_binder, input.GetFunctionName(), input.GetArgumentType(0));
 	return bind_data->aggr.GetReturnType();
@@ -772,19 +772,19 @@ void ParseOrderBys(const Value &order_value, idx_t column_count, vector<SortedAg
 	}
 }
 
-idx_t GetArgumentCount(ResolveReturnTypeInput &input) {
+idx_t GetArgumentCount(const ResolveReturnTypeInput &input) {
 	return input.GetArgumentCount();
 }
 idx_t GetArgumentCount(BindScalarFunctionInput &input) {
 	return input.GetArguments().size();
 }
-bool HasParameter(ResolveReturnTypeInput &input, idx_t index) {
+bool HasParameter(const ResolveReturnTypeInput &input, idx_t index) {
 	return input.HasParameter(index);
 }
 bool HasParameter(BindScalarFunctionInput &input, idx_t index) {
 	return input.GetArguments()[index]->HasParameter();
 }
-LogicalType GetArgumentType(ResolveReturnTypeInput &input, idx_t index) {
+LogicalType GetArgumentType(const ResolveReturnTypeInput &input, idx_t index) {
 	return input.GetArgumentType(index);
 }
 LogicalType GetArgumentType(BindScalarFunctionInput &input, idx_t index) {
@@ -888,19 +888,21 @@ unique_ptr<FunctionData> BindToAggregateState(INPUT &input, LogicalType &value_t
 	return std::move(bind_data);
 }
 
-//! Casts the value to the layout of the state, and returns the state type
-LogicalType ToAggregateStateResolveTypes(ResolveReturnTypeInput &input) {
+//! The type of the state of the aggregate
+LogicalType ToAggregateStateReturnType(const ResolveReturnTypeInput &input) {
 	LogicalType value_type;
 	LogicalType state_type;
 	BindToAggregateState(input, value_type, state_type);
-	input.CastArgument(0, value_type);
 	return state_type;
 }
 
+//! Casts the value to the layout of the state
 unique_ptr<FunctionData> ToAggregateStateBind(BindScalarFunctionInput &input) {
 	LogicalType value_type;
 	LogicalType state_type;
-	return BindToAggregateState(input, value_type, state_type);
+	auto bind_data = BindToAggregateState(input, value_type, state_type);
+	input.CastArgument(0, value_type);
+	return bind_data;
 }
 
 void ToAggregateStateFunction(DataChunk &input, ExpressionState &state, Vector &result) {
@@ -1100,7 +1102,7 @@ ScalarFunctionSet ToAggregateStateFun::GetFunctions() {
 	                     .AddPositionalOnly("data", TypeName::VARIABLE("T"))
 	                     .AddPositionalOnly("name", LogicalType::VARCHAR)
 	                     .AddPositionalOnly("signature", TypeName::VARIABLE("SIGNATURE"))
-	                     .SetReturnType(ReturnType::ANY(ToAggregateStateResolveTypes));
+	                     .SetReturnType(ReturnType::ANY(ToAggregateStateReturnType));
 	for (idx_t optional_args = 0; optional_args < 3; optional_args++) {
 		if (optional_args == 1) {
 			// optional fourth argument: constant parameter values as a list with one entry per argument (e.g.

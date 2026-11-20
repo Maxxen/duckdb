@@ -136,7 +136,7 @@ static void ListZipFunction(DataChunk &args, ExpressionState &state, Vector &res
 }
 
 //! A list of tuples with one member for each of the leading lists
-static LogicalType GetListZipType(ResolveReturnTypeInput &input, idx_t list_count) {
+static LogicalType GetListZipType(const ResolveReturnTypeInput &input, idx_t list_count) {
 	if (list_count == 0) {
 		throw BinderException("Provide at least one list argument to " + input.GetFunctionName());
 	}
@@ -146,9 +146,8 @@ static LogicalType GetListZipType(ResolveReturnTypeInput &input, idx_t list_coun
 		switch (child_type.id()) {
 		case LogicalTypeId::ARRAY:
 			// arrays are zipped as lists
-			child_type = LogicalType::LIST(ArrayType::GetChildType(child_type));
-			input.CastArgument(i, child_type);
-			DUCKDB_EXPLICIT_FALLTHROUGH;
+			struct_children.emplace_back(make_pair(string(), ArrayType::GetChildType(child_type)));
+			break;
 		case LogicalTypeId::LIST:
 			struct_children.emplace_back(make_pair(string(), ListType::GetChildType(child_type)));
 			break;
@@ -163,13 +162,13 @@ static LogicalType GetListZipType(ResolveReturnTypeInput &input, idx_t list_coun
 }
 
 //! The lists, followed by the truncate flag
-static LogicalType ListZipReturnType(ResolveReturnTypeInput &input) {
+static LogicalType ListZipReturnType(const ResolveReturnTypeInput &input) {
 	D_ASSERT(input.GetArgumentCount() >= 2);
 	return GetListZipType(input, input.GetArgumentCount() - 1);
 }
 
 //! Deprecated: the lists, optionally followed by a truncate flag that is passed by position
-static LogicalType ListZipPositionalFlagReturnType(ResolveReturnTypeInput &input) {
+static LogicalType ListZipPositionalFlagReturnType(const ResolveReturnTypeInput &input) {
 	idx_t size = input.GetArgumentCount();
 	if (size == 0) {
 		throw BinderException("Provide at least one argument to " + input.GetFunctionName());
@@ -182,11 +181,20 @@ static LogicalType ListZipPositionalFlagReturnType(ResolveReturnTypeInput &input
 
 static unique_ptr<FunctionData> ListZipPositionalFlagBind(BindScalarFunctionInput &input) {
 	auto &arguments = input.GetArguments();
+	idx_t list_count = arguments.size();
 	if (!arguments.empty() && arguments.back()->GetReturnType().id() == LogicalTypeId::BOOLEAN) {
 		DUCKDB_LOG_WARNING(input.GetClientContext(),
 		                   "Passing the truncate flag of %s by position is deprecated and will be removed in a "
 		                   "future release - pass it by name instead: \"truncate := true\".",
 		                   input.GetBoundFunction().GetName().GetIdentifierName());
+		list_count--;
+	}
+	// arrays are zipped as lists
+	for (idx_t i = 0; i < list_count; i++) {
+		auto &type = arguments[i]->GetReturnType();
+		if (type.id() == LogicalTypeId::ARRAY) {
+			input.CastArgument(i, LogicalType::LIST(ArrayType::GetChildType(type)));
+		}
 	}
 	return VariableReturnBindData::Bind(input);
 }

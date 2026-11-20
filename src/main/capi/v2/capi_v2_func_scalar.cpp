@@ -146,7 +146,7 @@ public:
 	optional<TypeName> declared_return_type;
 };
 
-static auto CV2ScalarResolveTypes(ResolveReturnTypeInput &input) -> LogicalType {
+static auto CV2ScalarResolveTypes(const ResolveReturnTypeInput &input) -> LogicalType {
 	auto &bound_function = static_cast<const BoundScalarFunction &>(input.GetBoundFunction());
 	const auto &info = bound_function.GetExtraFunctionInfo().Cast<CV2ScalarFunctionInfo>();
 

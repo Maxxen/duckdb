@@ -489,9 +489,8 @@ LogicalType DecimalArithmeticResultType(const DecimalWidthLimit &decimal_width_l
 	    max_scale);
 }
 
-//! The decimal an addition or subtraction of two decimals of one type returns. The arguments are cast to it when the
-//! kernel computes in another physical type
-LogicalType DecimalAddSubtractReturnType(ResolveReturnTypeInput &input) {
+//! The decimal an addition or subtraction of two decimals of one type returns
+LogicalType DecimalAddSubtractReturnType(const ResolveReturnTypeInput &input) {
 	auto argument_types = input.GetArgumentTypes();
 	auto &argument_type = argument_types[0];
 	if (argument_type.id() != LogicalTypeId::DECIMAL) {
@@ -499,13 +498,7 @@ LogicalType DecimalAddSubtractReturnType(ResolveReturnTypeInput &input) {
 		return argument_type;
 	}
 	bool check_overflow;
-	auto result_type = DecimalArithmeticResultType<false>(input.GetDecimalWidthLimit(), argument_types, check_overflow);
-	if (argument_type.InternalType() != result_type.InternalType()) {
-		// the kernel computes in the physical type of the result
-		input.CastArgument(0, result_type);
-		input.CastArgument(1, result_type);
-	}
-	return result_type;
+	return DecimalArithmeticResultType<false>(input.GetDecimalWidthLimit(), argument_types, check_overflow);
 }
 
 template <class OP, class OPOVERFLOWCHECK, bool IS_SUBTRACT = false>
@@ -513,10 +506,15 @@ unique_ptr<FunctionData> BindDecimalAddSubtract(BindScalarFunctionInput &input) 
 	auto &bound_function = input.GetBoundFunction();
 	auto bind_data = make_uniq<DecimalArithmeticBindData>();
 	auto &result_type = bound_function.GetReturnType();
-	// the type of the arguments before they were cast to the physical type of the result
+	// the type of the arguments before they are cast
 	auto &argument_types = bound_function.GetLogicalArguments();
 	if (argument_types[0].id() == LogicalTypeId::DECIMAL) {
 		DecimalArithmeticResultType<false>(input.GetDecimalWidthLimit(), argument_types, bind_data->check_overflow);
+		if (argument_types[0].InternalType() != result_type.InternalType()) {
+			// the kernel computes in the physical type of the result
+			input.CastArgument(0, result_type);
+			input.CastArgument(1, result_type);
+		}
 	}
 
 	// now select the physical function to execute
@@ -970,7 +968,7 @@ static LogicalType PromotedNegateType(const LogicalType &type) {
 }
 
 //! Negating a constant that is the minimum value of its type returns the next larger type
-static LogicalType IntegerNegateReturnType(ResolveReturnTypeInput &input) {
+static LogicalType IntegerNegateReturnType(const ResolveReturnTypeInput &input) {
 	D_ASSERT(input.GetArgumentCount() == 1);
 	auto &type = input.GetArgumentType(0);
 	auto constant = input.TryGetConstant(0);
@@ -1331,10 +1329,19 @@ LogicalType DecimalMultiplyResultType(const DecimalWidthLimit &decimal_width_lim
 }
 
 //! A product has the digits and the scale of both factors
-LogicalType DecimalMultiplyReturnType(ResolveReturnTypeInput &input) {
+LogicalType DecimalMultiplyReturnType(const ResolveReturnTypeInput &input) {
 	bool check_overflow;
 	auto argument_types = input.GetArgumentTypes();
-	auto result_type = DecimalMultiplyResultType(input.GetDecimalWidthLimit(), argument_types, check_overflow);
+	return DecimalMultiplyResultType(input.GetDecimalWidthLimit(), argument_types, check_overflow);
+}
+
+unique_ptr<FunctionData> BindDecimalMultiply(BindScalarFunctionInput &input) {
+	auto &bound_function = input.GetBoundFunction();
+	auto bind_data = make_uniq<DecimalArithmeticBindData>();
+	// the types of the factors before they are cast
+	auto &argument_types = bound_function.GetLogicalArguments();
+	auto &result_type = bound_function.GetReturnType();
+	DecimalMultiplyResultType(input.GetDecimalWidthLimit(), argument_types, bind_data->check_overflow);
 	// the scale of the result is the sum of the scales of the factors, so they keep their scale - the kernel
 	// computes in the physical type of the result
 	for (idx_t i = 0; i < argument_types.size(); i++) {
@@ -1346,16 +1353,6 @@ LogicalType DecimalMultiplyReturnType(ResolveReturnTypeInput &input) {
 		input.CastArgument(
 		    i, LogicalType::DECIMAL(DecimalType::GetWidth(result_type), DecimalType::GetScale(argument_type)));
 	}
-	return result_type;
-}
-
-unique_ptr<FunctionData> BindDecimalMultiply(BindScalarFunctionInput &input) {
-	auto &bound_function = input.GetBoundFunction();
-	auto bind_data = make_uniq<DecimalArithmeticBindData>();
-	// the types of the factors before they were cast to the physical type of the result
-	auto &argument_types = bound_function.GetLogicalArguments();
-	auto &result_type = bound_function.GetReturnType();
-	DecimalMultiplyResultType(input.GetDecimalWidthLimit(), argument_types, bind_data->check_overflow);
 	// now select the physical function to execute
 	if (bind_data->check_overflow) {
 		bound_function.SetFunctionCallback(

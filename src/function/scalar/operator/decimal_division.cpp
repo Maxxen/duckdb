@@ -220,7 +220,7 @@ static void SelectDecimalDivFunction(BoundScalarFunction &bound_function);
 //   result_scale = max(6, s1 + p2 + 1)
 //   result_width = p1 - s1 + s2 + result_scale
 // Both are capped at Decimal::MAX_WIDTH_INT128 (38).
-static LogicalType DecimalDivisionReturnType(ResolveReturnTypeInput &input) {
+static LogicalType DecimalDivisionReturnType(const ResolveReturnTypeInput &input) {
 	auto &lhs_type = input.GetArgumentType(0);
 	auto &rhs_type = input.GetArgumentType(1);
 

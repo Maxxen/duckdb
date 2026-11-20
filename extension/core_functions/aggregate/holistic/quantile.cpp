@@ -748,7 +748,7 @@ static LogicalType MedianInputType(const LogicalType &type) {
 }
 
 //! The type a median returns: types that cannot be interpolated return one of their values
-static LogicalType MedianReturnType(const LogicalType &type) {
+static LogicalType MedianResultType(const LogicalType &type) {
 	auto input_type = MedianInputType(type);
 	if (!CanInterpolate(input_type)) {
 		return input_type;
@@ -778,28 +778,28 @@ struct MedianFunction {
 		auto bind_data = QuantileBindData::Deserialize(deserializer, function);
 		auto &input_type = function.GetArguments()[0];
 		function.ReplaceKernel(GetKernel(input_type));
-		function.SetReturnType(MedianReturnType(input_type));
+		function.SetReturnType(MedianResultType(input_type));
 		return bind_data;
 	}
 
 	static unique_ptr<FunctionData> Bind(BindAggregateFunctionInput &input) {
-		// the argument was cast to the type it is aggregated as
-		input.GetBoundFunction().ReplaceKernel(GetKernel(input.GetArguments()[0]->GetReturnType()));
+		auto &function = input.GetBoundFunction();
+		// the binder casts the argument to the type the function is bound to: the type it is aggregated as
+		auto &bound_type = function.GetArguments()[0];
+		auto input_type =
+		    MedianInputType(bound_type.IsComplete() ? bound_type : input.GetArguments()[0]->GetReturnType());
+		function.GetArguments()[0] = input_type;
+		function.ReplaceKernel(GetKernel(input_type));
 		return make_uniq<QuantileBindData>(Value::DECIMAL(int16_t(5), 2, 1));
 	}
 };
 
-//! Casts the argument to the type its median is computed over
-static LogicalType MedianResolveTypes(ResolveReturnTypeInput &input) {
+static LogicalType MedianReturnType(const ResolveReturnTypeInput &input) {
 	auto &type = input.GetArgumentType(0);
 	if (type.id() == LogicalTypeId::UNKNOWN) {
 		throw ParameterNotResolvedException();
 	}
-	auto input_type = MedianInputType(type);
-	if (input_type != type) {
-		input.CastArgument(0, input_type);
-	}
-	return MedianReturnType(input_type);
+	return MedianResultType(type);
 }
 
 struct DiscreteQuantileListFunction {
@@ -933,7 +933,7 @@ static AggregateFunction EmptyQuantileFunction(TypeName input, const ReturnType 
 
 AggregateFunctionSet MedianFun::GetFunctions() {
 	AggregateFunctionSet set("median");
-	set.AddFunction(EmptyQuantileFunction<MedianFunction>(TypeName::VARIABLE("T"), ReturnType::ANY(MedianResolveTypes),
+	set.AddFunction(EmptyQuantileFunction<MedianFunction>(TypeName::VARIABLE("T"), ReturnType::ANY(MedianReturnType),
 	                                                      LogicalTypeId::INVALID,
 	                                                      FunctionSignature().AddVariable("T")));
 	return set;

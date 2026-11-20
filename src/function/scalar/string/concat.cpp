@@ -200,7 +200,7 @@ void ConcatFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 }
 
 //! The list type that lists and arrays are concatenated as - NULL if all of them are NULL
-LogicalType GetListConcatType(ResolveReturnTypeInput &input) {
+LogicalType GetListConcatType(const ResolveReturnTypeInput &input) {
 	auto &context = input.GetClientContext();
 	LogicalType child_type = LogicalType::SQLNULL;
 	bool all_null = true;
@@ -255,7 +255,7 @@ enum class ConcatKind : uint8_t { CONCAT, LIST_CONCAT, CONCAT_OPERATOR };
 
 //! The type the arguments are concatenated as, which is the type that is returned
 template <ConcatKind KIND>
-LogicalType GetConcatType(ResolveReturnTypeInput &input) {
+LogicalType ConcatReturnType(const ResolveReturnTypeInput &input) {
 	bool list_concat = KIND == ConcatKind::LIST_CONCAT;
 	bool all_null = true;
 	// blob concat is only supported for the concat operator - regular concat converts to varchar
@@ -285,24 +285,23 @@ LogicalType GetConcatType(ResolveReturnTypeInput &input) {
 	return all_blob ? LogicalType::BLOB : LogicalType::VARCHAR;
 }
 
-//! Casts the arguments to the type they are concatenated as
-template <ConcatKind KIND>
-LogicalType ConcatResolveTypes(ResolveReturnTypeInput &input) {
-	auto concat_type = GetConcatType<KIND>(input);
+//! Casts the arguments to the type they are concatenated as, which is the type that is returned
+unique_ptr<FunctionData> BindConcat(BindScalarFunctionInput &input, bool is_operator) {
+	const auto concat_type = input.GetBoundFunction().GetReturnType();
 	if (concat_type.id() != LogicalTypeId::SQLNULL) {
-		for (idx_t i = 0; i < input.GetArgumentCount(); i++) {
+		for (idx_t i = 0; i < input.GetArguments().size(); i++) {
 			input.CastArgument(i, concat_type);
 		}
 	}
-	return concat_type;
+	return make_uniq<ConcatFunctionData>(concat_type, is_operator);
 }
 
 unique_ptr<FunctionData> BindConcatFunction(BindScalarFunctionInput &input) {
-	return make_uniq<ConcatFunctionData>(input.GetBoundFunction().GetReturnType(), false);
+	return BindConcat(input, false);
 }
 
 unique_ptr<FunctionData> BindConcatOperator(BindScalarFunctionInput &input) {
-	return make_uniq<ConcatFunctionData>(input.GetBoundFunction().GetReturnType(), true);
+	return BindConcat(input, true);
 }
 
 unique_ptr<BaseStatistics> ListConcatStats(ClientContext &context, FunctionStatisticsInput &input) {
@@ -337,7 +336,7 @@ ScalarFunction ListConcatFun::GetFunction() {
 	// The arguments and return types are set in the binder function.
 	auto fun = ScalarFunction(FunctionSignature()
 	                              .AddArgs("args", LogicalType::LIST(LogicalType::ANY))
-	                              .SetReturnType(ReturnType::ANY(ConcatResolveTypes<ConcatKind::LIST_CONCAT>)),
+	                              .SetReturnType(ReturnType::ANY(ConcatReturnType<ConcatKind::LIST_CONCAT>)),
 	                          ConcatFunction, BindConcatFunction, ListConcatStats);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
@@ -357,7 +356,7 @@ ScalarFunction ConcatFun::GetFunction() {
 	                          .AddVariable("T")
 	                          .AddParameter("value", TypeName::VARIABLE("T"))
 	                          .AddArgs("args", LogicalType::ANY)
-	                          .SetReturnType(ReturnType::ANY(ConcatResolveTypes<ConcatKind::CONCAT>)),
+	                          .SetReturnType(ReturnType::ANY(ConcatReturnType<ConcatKind::CONCAT>)),
 	                      ConcatFunction, BindConcatFunction);
 	concat.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return concat;
@@ -370,7 +369,7 @@ ScalarFunction ConcatOperatorFun::GetFunction() {
 	                             .AddVariable("U")
 	                             .AddParameter("arg1", TypeName::VARIABLE("T"))
 	                             .AddParameter("arg2", TypeName::VARIABLE("U"))
-	                             .SetReturnType(ReturnType::ANY(ConcatResolveTypes<ConcatKind::CONCAT_OPERATOR>)),
+	                             .SetReturnType(ReturnType::ANY(ConcatReturnType<ConcatKind::CONCAT_OPERATOR>)),
 	                         ConcatFunction, BindConcatOperator);
 	return concat_op;
 }

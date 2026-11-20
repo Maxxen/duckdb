@@ -148,7 +148,7 @@ static LogicalType GetUpdatedStruct(const vector<LogicalType> &types, const vect
 	return LogicalType::STRUCT(new_children);
 }
 
-static LogicalType StructUpdateReturnType(ResolveReturnTypeInput &input) {
+static LogicalType StructUpdateReturnType(const ResolveReturnTypeInput &input) {
 	vector<Identifier> names;
 	for (idx_t i = 0; i < input.GetArgumentCount(); i++) {
 		names.push_back(input.GetArgumentName(i));

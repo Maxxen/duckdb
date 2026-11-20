@@ -441,7 +441,7 @@ static unique_ptr<FunctionData> RegexExtractBind(BindScalarFunctionInput &input)
 //! The struct of the groups the constant name list names: one struct for regexp_extract, a list of them for
 //! regexp_extract_all. The pattern has to be constant, it is what the groups are numbered in
 template <bool EXTRACT_ALL>
-static LogicalType RegexExtractStructReturnType(ResolveReturnTypeInput &input) {
+static LogicalType RegexExtractStructReturnType(const ResolveReturnTypeInput &input) {
 	D_ASSERT(input.GetArgumentCount() >= 3);
 	string constant_string;
 	bool constant_pattern = TryParseConstantPattern(input.TryGetConstant(1), constant_string);

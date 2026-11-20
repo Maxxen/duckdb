@@ -90,7 +90,7 @@ static LogicalType StructureStringToType(yyjson_val *val, ClientContext &context
 }
 
 //! The type the constant structure describes
-static LogicalType JSONTransformReturnType(ResolveReturnTypeInput &input) {
+static LogicalType JSONTransformReturnType(const ResolveReturnTypeInput &input) {
 	auto &context = input.GetClientContext();
 	D_ASSERT(input.GetArgumentCount() == 2);
 	auto structure_val = input.GetConstant(1);

@@ -225,34 +225,38 @@ static void StructSearchFunction(DataChunk &args, ExpressionState &state, Vector
 	StructSearchOp<RETURN_TYPE, FIND_NULLS>(input_vector, members, info.matching_members, target, count, result);
 }
 
-//! Casts the members of the struct that can be compared with the value, and the value, to the type they unify into
+//! A search of an unnamed struct - a NULL struct is searched as NULL
 template <LogicalTypeId RETURN_TYPE>
-static LogicalType StructContainsResolveTypes(ResolveReturnTypeInput &input) {
-	auto &context = input.GetClientContext();
+static LogicalType StructContainsReturnType(const ResolveReturnTypeInput &input) {
 	D_ASSERT(input.GetArgumentCount() == 2);
-	auto child_type = input.GetArgumentType(0);
+	auto &child_type = input.GetArgumentType(0);
 	if (child_type.id() == LogicalTypeId::UNKNOWN) {
 		throw ParameterNotResolvedException();
 	}
 	if (child_type.id() == LogicalTypeId::SQLNULL) {
 		return LogicalType::SQLNULL;
 	}
-
-	auto struct_children = StructType::GetChildTypes(child_type);
-	if (struct_children.empty()) {
-		// an empty struct contains nothing, the search always returns false (or position 0)
-		return LogicalType(RETURN_TYPE);
-	}
-	if (child_type.id() != LogicalTypeId::TUPLE) {
+	// an empty struct contains nothing, the search always returns false (or position 0)
+	if (!StructType::GetChildTypes(child_type).empty() && child_type.id() != LogicalTypeId::TUPLE) {
 		throw BinderException("%s can only be used on unnamed structs", input.GetFunctionName());
 	}
+	return LogicalType(RETURN_TYPE);
+}
 
+//! Casts the members of the struct that can be compared with the value, and the value, to the type they unify into
+static void CastStructContainsArguments(BindScalarFunctionInput &input) {
+	auto &context = input.GetClientContext();
+	auto &arguments = input.GetArguments();
+	const auto decimal_width_limit = input.GetDecimalWidthLimit();
+	auto struct_children = StructType::GetChildTypes(arguments[0]->GetReturnType());
+	if (struct_children.empty()) {
+		return;
+	}
 	// find the type that the value and all the children it can be compared with can be cast to
-	LogicalType target_type = input.GetArgumentType(1);
+	LogicalType target_type = arguments[1]->GetReturnType();
 	for (auto &child : struct_children) {
 		LogicalType max_type;
-		if (LogicalType::TryGetMaxLogicalType(context, child.second, target_type, max_type,
-		                                      input.GetDecimalWidthLimit())) {
+		if (LogicalType::TryGetMaxLogicalType(context, child.second, target_type, max_type, decimal_width_limit)) {
 			target_type = max_type;
 		}
 	}
@@ -260,8 +264,7 @@ static LogicalType StructContainsResolveTypes(ResolveReturnTypeInput &input) {
 	child_list_t<LogicalType> cast_children;
 	for (auto &child : struct_children) {
 		LogicalType max_type;
-		if (LogicalType::TryGetMaxLogicalType(context, child.second, target_type, max_type,
-		                                      input.GetDecimalWidthLimit()) &&
+		if (LogicalType::TryGetMaxLogicalType(context, child.second, target_type, max_type, decimal_width_limit) &&
 		    max_type == target_type) {
 			cast_children.emplace_back(child.first, target_type);
 		} else {
@@ -271,17 +274,16 @@ static LogicalType StructContainsResolveTypes(ResolveReturnTypeInput &input) {
 	// the input is an unnamed struct - represent it as a TUPLE
 	input.CastArgument(0, LogicalType::TUPLE(cast_children));
 	input.CastArgument(1, target_type);
-	return LogicalType(RETURN_TYPE);
 }
 
 static unique_ptr<FunctionData> StructContainsBind(BindScalarFunctionInput &input) {
 	auto &arguments = input.GetArguments();
 	vector<idx_t> matching_members;
-	auto &child_type = arguments[0]->GetReturnType();
-	if (child_type.id() != LogicalTypeId::SQLNULL) {
-		// the members that can match the value were cast to the type of the value when resolving the types
+	if (arguments[0]->GetReturnType().id() != LogicalTypeId::SQLNULL) {
+		CastStructContainsArguments(input);
+		// the members that can match the value are of the type of the value
 		auto &target_type = arguments[1]->GetReturnType();
-		auto &struct_children = StructType::GetChildTypes(child_type);
+		auto &struct_children = StructType::GetChildTypes(arguments[0]->GetReturnType());
 		for (idx_t child_idx = 0; child_idx < struct_children.size(); child_idx++) {
 			if (struct_children[child_idx].second == target_type) {
 				matching_members.push_back(child_idx);
@@ -298,7 +300,7 @@ ScalarFunction StructContainsFun::GetFunction() {
 	                       .AddVariable("U")
 	                       .AddParameter("struct", TypeName::VARIABLE("T"))
 	                       .AddParameter("entry", TypeName::VARIABLE("U"))
-	                       .SetReturnType(ReturnType::ANY(StructContainsResolveTypes<LogicalTypeId::BOOLEAN>)),
+	                       .SetReturnType(ReturnType::ANY(StructContainsReturnType<LogicalTypeId::BOOLEAN>)),
 	                   StructSearchFunction<bool>);
 	fun.SetBindCallback(StructContainsBind);
 	return fun;
@@ -311,7 +313,7 @@ ScalarFunction StructPositionFun::GetFunction() {
 	                       .AddVariable("U")
 	                       .AddParameter("struct", TypeName::VARIABLE("T"))
 	                       .AddParameter("entry", TypeName::VARIABLE("U"))
-	                       .SetReturnType(ReturnType::ANY(StructContainsResolveTypes<LogicalTypeId::INTEGER>)),
+	                       .SetReturnType(ReturnType::ANY(StructContainsReturnType<LogicalTypeId::INTEGER>)),
 	                   StructSearchFunction<int32_t, true>);
 	fun.SetBindCallback(StructContainsBind);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

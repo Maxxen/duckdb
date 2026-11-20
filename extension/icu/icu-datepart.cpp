@@ -554,7 +554,7 @@ struct ICUDatePart : public ICUDateFunc {
 		return LogicalType::STRUCT(std::move(struct_children));
 	}
 
-	static LogicalType ResolveStructType(ResolveReturnTypeInput &input) {
+	static LogicalType ResolveStructType(const ResolveReturnTypeInput &input) {
 		BindStructData::part_codes_t part_codes;
 		return GetStructType(input.GetFunctionName(), input.GetConstant(0), part_codes);
 	}

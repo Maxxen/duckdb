@@ -387,15 +387,13 @@ AggregateFunction GetHistogramBinFunction(const LogicalType &type) {
 	}
 }
 
-//! The bins of decimals are computed as doubles: the values and the bins are cast to them
-LogicalType HistogramBinReturnType(ResolveReturnTypeInput &input) {
-	auto bin_type = input.GetArgumentType(0);
-	if (bin_type.id() == LogicalTypeId::DECIMAL) {
-		bin_type = LogicalType::DOUBLE;
-		input.CastArgument(0, bin_type);
-		input.CastArgument(1, LogicalType::LIST(bin_type));
-	}
-	return LogicalType::MAP(bin_type, LogicalType::UBIGINT);
+//! The bins of decimals are computed as doubles
+LogicalType HistogramBinType(const LogicalType &type) {
+	return type.id() == LogicalTypeId::DECIMAL ? LogicalType::DOUBLE : type;
+}
+
+LogicalType HistogramBinReturnType(const ResolveReturnTypeInput &input) {
+	return LogicalType::MAP(HistogramBinType(input.GetArgumentType(0)), LogicalType::UBIGINT);
 }
 
 template <class HIST>
@@ -408,8 +406,12 @@ unique_ptr<FunctionData> HistogramBinBindFunction(BindAggregateFunctionInput &in
 		}
 	}
 
-	// the template signature resolved both parameters to the deduced bin type
-	function.ReplaceKernel(GetHistogramBinFunction<HIST>(function.GetArguments()[0]));
+	// the template signature resolved both parameters to the deduced bin type. The binder casts the values and the
+	// bins to the types the function is bound to
+	auto bin_type = HistogramBinType(function.GetArguments()[0]);
+	function.GetArguments()[0] = bin_type;
+	function.GetArguments()[1] = LogicalType::LIST(bin_type);
+	function.ReplaceKernel(GetHistogramBinFunction<HIST>(bin_type));
 	return nullptr;
 }
 

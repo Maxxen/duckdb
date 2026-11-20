@@ -18,7 +18,7 @@ static void ManyTypeFunction(DataChunk &args, ExpressionState &state, Vector &re
 	JSONExecutors::ExecuteMany<string_t>(args, state, result, GetType);
 }
 
-static LogicalType TypeReturnType(ResolveReturnTypeInput &input) {
+static LogicalType TypeReturnType(const ResolveReturnTypeInput &input) {
 	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::VARCHAR);
 }
 

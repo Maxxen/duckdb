@@ -49,7 +49,7 @@ Value GetSettingValue(ClientContext &context, const Value &key_val) {
 }
 
 //! A setting is returned as the type of its value
-LogicalType CurrentSettingReturnType(ResolveReturnTypeInput &input) {
+LogicalType CurrentSettingReturnType(const ResolveReturnTypeInput &input) {
 	return GetSettingValue(input.GetClientContext(), input.GetNonNullConstant(0)).type();
 }
 

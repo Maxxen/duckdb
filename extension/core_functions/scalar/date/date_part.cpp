@@ -2318,7 +2318,7 @@ struct StructDatePart {
 		return LogicalType::STRUCT(struct_children);
 	}
 
-	static LogicalType ResolveStructType(ResolveReturnTypeInput &input) {
+	static LogicalType ResolveStructType(const ResolveReturnTypeInput &input) {
 		part_codes_t part_codes;
 		return GetStructType(input.GetFunctionName(), input.GetConstant(0), input.GetArgumentType(1), part_codes);
 	}

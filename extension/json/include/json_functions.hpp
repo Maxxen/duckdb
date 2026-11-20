@@ -37,7 +37,7 @@ public:
 	//! integer it is, other paths are strings
 	static void AddPathFunctions(ScalarFunctionSet &set, const ScalarFunction &function, const LogicalType &json_type);
 	//! A constant path with a wildcard returns a list of the given type
-	static LogicalType ResolveReturnType(ResolveReturnTypeInput &input, const LogicalType &type);
+	static LogicalType ResolveReturnType(const ResolveReturnTypeInput &input, const LogicalType &type);
 	static unique_ptr<FunctionData> Bind(BindScalarFunctionInput &input);
 
 public:

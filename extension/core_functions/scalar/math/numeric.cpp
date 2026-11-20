@@ -795,7 +795,7 @@ unique_ptr<FunctionData> ResolveDecimalRoundPrecision(const DecimalWidthLimit &d
 
 //! Rounding a decimal to a precision gives it that scale, and one more digit if it can carry into a new one
 template <bool CAN_CARRY = false>
-LogicalType DecimalRoundPrecisionReturnType(ResolveReturnTypeInput &input) {
+LogicalType DecimalRoundPrecisionReturnType(const ResolveReturnTypeInput &input) {
 	auto decimal_type = input.GetArgumentType(0);
 	if (decimal_type.id() != LogicalTypeId::DECIMAL) {
 		// the argument is NULL
@@ -817,20 +817,22 @@ LogicalType DecimalRoundPrecisionReturnType(ResolveReturnTypeInput &input) {
 			result_width++;
 		}
 	}
-	auto result_type = LogicalType::DECIMAL(result_width, 0);
-	if (result_type.InternalType() != decimal_type.InternalType()) {
-		// the kernel reads the argument in the physical type of the result
-		input.CastArgument(0, LogicalType::DECIMAL(result_width, scale));
-	}
-	return result_type;
+	return LogicalType::DECIMAL(result_width, 0);
 }
 
 template <typename NEGOP, typename POSOP, bool CAN_CARRY = false>
 unique_ptr<FunctionData> BindDecimalRoundPrecision(BindScalarFunctionInput &input) {
 	auto &bound_function = input.GetBoundFunction();
 	auto val = input.GetNonNullConstant(1).CastAs(input.GetClientContext(), LogicalType::INTEGER);
-	// the type of the decimal before it was cast to the physical type of the result
+	// the type of the decimal before it is cast
 	auto &decimal_type = bound_function.GetLogicalArguments()[0];
+	auto &result_type = bound_function.GetReturnType();
+	if (decimal_type.id() == LogicalTypeId::DECIMAL && result_type.id() == LogicalTypeId::DECIMAL &&
+	    result_type.InternalType() != decimal_type.InternalType()) {
+		// the kernel reads the argument in the physical type of the result
+		input.CastArgument(
+		    0, LogicalType::DECIMAL(DecimalType::GetWidth(result_type), DecimalType::GetScale(decimal_type)));
+	}
 	return ResolveDecimalRoundPrecision<NEGOP, POSOP, CAN_CARRY>(input.GetDecimalWidthLimit(), bound_function,
 	                                                             decimal_type, IntegerValue::Get(val));
 }

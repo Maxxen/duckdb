@@ -47,7 +47,7 @@ void ArrayValueFunction(DataChunk &args, ExpressionState &state, Vector &result)
 }
 
 //! An array of the type the arguments unify into, with one element for each argument
-LogicalType ArrayValueReturnType(ResolveReturnTypeInput &input) {
+LogicalType ArrayValueReturnType(const ResolveReturnTypeInput &input) {
 	const auto argument_count = input.GetArgumentCount();
 	if (argument_count == 0) {
 		throw InvalidInputException("array_value requires at least one argument");

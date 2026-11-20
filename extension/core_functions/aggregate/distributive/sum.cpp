@@ -601,7 +601,7 @@ static constexpr uint32_t WIDE_SUM_EXTRA_DIGITS = 20;
 
 //! The sum of decimals of at most 38 digits is a decimal of 38 digits. Wide decimals sum their BIGNUM blobs exactly:
 //! 20 more digits hold the sum of any number of rows (below 2^64)
-LogicalType DecimalSumReturnType(ResolveReturnTypeInput &input) {
+LogicalType DecimalSumReturnType(const ResolveReturnTypeInput &input) {
 	auto &decimal_type = input.GetArgumentType(0);
 	if (decimal_type.id() != LogicalTypeId::DECIMAL) {
 		// the bind rejects the argument

@@ -47,7 +47,7 @@ public:
 	}
 };
 
-LogicalType WriteLogReturnType(ResolveReturnTypeInput &input) {
+LogicalType WriteLogReturnType(const ResolveReturnTypeInput &input) {
 	for (idx_t i = 1; i < input.GetArgumentCount(); i++) {
 		if (input.GetArgumentName(i) == "return_value") {
 			return input.GetArgumentType(i);

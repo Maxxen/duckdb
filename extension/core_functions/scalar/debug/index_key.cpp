@@ -195,10 +195,10 @@ void RegisterIndexKeyRead(BindScalarFunctionInput &input, TableCatalogEntry &tab
 	}
 }
 
-void RegisterIndexKeyRead(ResolveReturnTypeInput &input, TableCatalogEntry &table_entry) {
+void RegisterIndexKeyRead(const ResolveReturnTypeInput &input, TableCatalogEntry &table_entry) {
 }
 
-idx_t GetArgumentCount(ResolveReturnTypeInput &input) {
+idx_t GetArgumentCount(const ResolveReturnTypeInput &input) {
 	return input.GetArgumentCount();
 }
 idx_t GetArgumentCount(BindScalarFunctionInput &input) {

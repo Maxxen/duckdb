@@ -35,7 +35,7 @@ void UnionValueFunction(DataChunk &args, ExpressionState &state, Vector &result)
 }
 
 //! The union whose only member is the named argument
-LogicalType UnionValueReturnType(ResolveReturnTypeInput &input) {
+LogicalType UnionValueReturnType(const ResolveReturnTypeInput &input) {
 	if (input.GetArgumentCount() != 1) {
 		throw BinderException("union_value takes exactly one argument");
 	}

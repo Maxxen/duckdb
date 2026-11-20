@@ -278,7 +278,9 @@ unique_ptr<Expression> BuildListComprehensionRewrite(ClientContext &context, Lis
 	auto filter_bind_info =
 	    make_uniq<ListLambdaBindData>(filter_return_type, std::move(filter_lambda), inner_bind.has_index);
 
+	// the filter reads the list itself, and returns it
 	auto new_func = list_filter_expr.Function();
+	new_func.GetArguments()[0] = filter_return_type;
 	new_func.SetReturnType(filter_return_type);
 
 	auto new_filter = make_uniq<BoundFunctionExpression>(std::move(new_func), std::move(filter_children),
@@ -302,8 +304,11 @@ unique_ptr<Expression> BuildListComprehensionRewrite(ClientContext &context, Lis
 	}
 
 	auto apply_bind_info = make_uniq<ListLambdaBindData>(apply_return_type, std::move(apply_lambda));
-	return make_uniq<BoundFunctionExpression>(root.Function(), std::move(apply_children), std::move(apply_bind_info),
-	                                          root.IsOperator());
+	// the result is computed over the filtered list
+	auto apply_func = root.Function();
+	apply_func.GetArguments()[0] = filter_return_type;
+	return make_uniq<BoundFunctionExpression>(std::move(apply_func), std::move(apply_children),
+	                                          std::move(apply_bind_info), root.IsOperator());
 }
 
 } // namespace

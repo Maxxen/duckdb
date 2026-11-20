@@ -78,7 +78,7 @@ void JSONReadFunctionData::AddPathFunctions(ScalarFunctionSet &set, const Scalar
 	set.AddFunction(path_fun);
 }
 
-LogicalType JSONReadFunctionData::ResolveReturnType(ResolveReturnTypeInput &input, const LogicalType &type) {
+LogicalType JSONReadFunctionData::ResolveReturnType(const ResolveReturnTypeInput &input, const LogicalType &type) {
 	auto path_val = input.TryGetConstant(1);
 	if (!path_val || path_val->IsNull()) {
 		return type;

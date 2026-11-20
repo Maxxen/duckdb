@@ -34,7 +34,7 @@ Value GetVariableValue(ClientContext &context, const Value &variable_name) {
 }
 
 //! A variable is returned as the type of its value
-LogicalType GetVariableReturnType(ResolveReturnTypeInput &input) {
+LogicalType GetVariableReturnType(const ResolveReturnTypeInput &input) {
 	return GetVariableValue(input.GetClientContext(), input.GetConstant(0)).type();
 }
 

@@ -34,7 +34,7 @@ static void ExtractStringManyFunction(DataChunk &args, ExpressionState &state, V
 	JSONExecutors::ExecuteMany<string_t>(args, state, result, ExtractStringFromVal);
 }
 
-static LogicalType ExtractReturnType(ResolveReturnTypeInput &input) {
+static LogicalType ExtractReturnType(const ResolveReturnTypeInput &input) {
 	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::JSON());
 }
 
@@ -66,7 +66,7 @@ ScalarFunctionSet JSONFunctions::GetExtractFunction() {
 	return set;
 }
 
-static LogicalType ExtractStringReturnType(ResolveReturnTypeInput &input) {
+static LogicalType ExtractStringReturnType(const ResolveReturnTypeInput &input) {
 	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::VARCHAR);
 }
 

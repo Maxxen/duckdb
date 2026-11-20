@@ -483,14 +483,6 @@ QueryErrorContext ResolveReturnTypeInput::GetArgumentLocation(idx_t arg_idx) con
 	return QueryErrorContext(arguments[arg_idx]->GetQueryLocation());
 }
 
-void ResolveReturnTypeInput::CastArgument(idx_t arg_idx, const LogicalType &type) {
-	auto &argument = arguments[arg_idx];
-	if (argument->GetReturnType() != type) {
-		argument = BoundCastExpression::AddCastToType(GetClientContext(), std::move(argument), type);
-	}
-	function.GetArguments()[arg_idx] = type;
-}
-
 vector<LogicalType> ResolveReturnTypeInput::GetArgumentTypes() const {
 	vector<LogicalType> result;
 	result.reserve(arguments.size());
@@ -993,9 +985,10 @@ Binder &BindFunctionInput::GetBinder() {
 	return *binder;
 }
 
-FunctionBinder BindFunctionInput::NestedFunctionBinder() {
+FunctionBinder BindFunctionInput::NestedFunctionBinder() const {
 	if (binder) {
-		return FunctionBinder(*binder);
+		auto query_binder = binder;
+		return FunctionBinder(*query_binder);
 	}
 	return FunctionBinder(context, decimal_width_limit);
 }

@@ -637,19 +637,21 @@ identifier_map_t<RemapEntry> GetRemapEntries(const vector<LogicalType> &types, c
 	return remap_map;
 }
 
-//! Casts the input to match up the source types to the target - the input is remapped to the target type
-LogicalType RemapStructResolveTypes(ResolveReturnTypeInput &input) {
+//! The input is remapped to the target type
+LogicalType RemapStructReturnType(const ResolveReturnTypeInput &input) {
 	auto types = input.GetArgumentTypes();
 	VerifyRemapArgumentTypes(types);
-	auto remap_map = GetRemapEntries(types, input.GetConstant(2), input.TryGetConstant(3).has_value());
-	input.CastArgument(0, RemapEntry::RemapCast(types[0], remap_map));
+	// the mapping is verified
+	GetRemapEntries(types, input.GetConstant(2), input.TryGetConstant(3).has_value());
 	return types[1];
 }
 
-//! The remapping is derived from the types the function was called with, before the input was cast
+//! The remapping is derived from the types the function was called with. The input is cast to match up the source
+//! types to the target
 unique_ptr<FunctionData> RemapStructBind(BindScalarFunctionInput &input) {
 	auto &types = input.GetBoundFunction().GetLogicalArguments();
 	auto remap_map = GetRemapEntries(types, input.GetConstant(2), input.GetArguments()[3]->IsFoldable());
+	input.CastArgument(0, RemapEntry::RemapCast(types[0], remap_map));
 	return make_uniq<RemapStructBindData>(RemapEntry::ConstructMap(types[1], remap_map));
 }
 
@@ -666,7 +668,7 @@ ScalarFunction RemapStructFun::GetFunction() {
 	                         .AddParameter("target_type", TypeName::VARIABLE("U"))
 	                         .AddParameter("mapping", TypeName::VARIABLE("V"))
 	                         .AddParameter("defaults", TypeName::VARIABLE("W"))
-	                         .SetReturnType(ReturnType::ANY(RemapStructResolveTypes)),
+	                         .SetReturnType(ReturnType::ANY(RemapStructReturnType)),
 	                     RemapStructFunction, RemapStructBind);
 	remap.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return remap;

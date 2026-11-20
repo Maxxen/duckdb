@@ -18,7 +18,7 @@ static void ManyArrayLengthFunction(DataChunk &args, ExpressionState &state, Vec
 	JSONExecutors::ExecuteMany<uint64_t>(args, state, result, GetArrayLength);
 }
 
-static LogicalType ArrayLengthReturnType(ResolveReturnTypeInput &input) {
+static LogicalType ArrayLengthReturnType(const ResolveReturnTypeInput &input) {
 	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::UBIGINT);
 }
 

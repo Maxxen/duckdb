@@ -304,8 +304,9 @@ void ArraySliceFunction(DataChunk &args, ExpressionState &state, Vector &result)
 }
 
 //! An omitted slice bound is parsed as an empty list constructor (see OperatorExpression::EmptySliceBound)
-bool IsEmptySliceBound(ResolveReturnTypeInput &input, idx_t arg_idx) {
-	if (input.GetArgumentType(arg_idx).id() != LogicalTypeId::LIST) {
+template <class INPUT>
+bool IsEmptySliceBound(const INPUT &input, const LogicalType &bound_type, idx_t arg_idx) {
+	if (bound_type.id() != LogicalTypeId::LIST) {
 		return false;
 	}
 	auto bound = input.TryGetConstant(arg_idx);
@@ -317,16 +318,15 @@ bool IsEmptySliceBound(ResolveReturnTypeInput &input, idx_t arg_idx) {
 }
 
 //! A slice is of the type that is sliced: an array is sliced as a list, JSON as a string. The bounds are BIGINT
-LogicalType ArraySliceResolveTypes(ResolveReturnTypeInput &input) {
+LogicalType ArraySliceReturnType(const ResolveReturnTypeInput &input) {
 	D_ASSERT(input.GetArgumentCount() == 3 || input.GetArgumentCount() == 4);
 
 	auto list_type = input.GetArgumentType(0);
 	LogicalType return_type;
 	switch (list_type.id()) {
 	case LogicalTypeId::ARRAY:
-		// Cast to list
+		// an array is sliced as a list
 		return_type = LogicalType::LIST(ArrayType::GetChildType(list_type));
-		input.CastArgument(0, return_type);
 		break;
 	case LogicalTypeId::LIST:
 		// The result is the same type
@@ -340,13 +340,8 @@ LogicalType ArraySliceResolveTypes(ResolveReturnTypeInput &input) {
 			    "Slice with steps has not been implemented for string types, you can consider rewriting your query as "
 			    "follows:\n SELECT array_to_string((str_split(string, '')[begin:end:step], '');");
 		}
-		if (list_type.IsJSONType()) {
-			// This is needed to avoid producing invalid JSON
-			return_type = LogicalType::VARCHAR;
-			input.CastArgument(0, return_type);
-		} else {
-			return_type = list_type;
-		}
+		// JSON is sliced as a string, to avoid producing invalid JSON
+		return_type = list_type.IsJSONType() ? LogicalType::VARCHAR : list_type;
 		break;
 	case LogicalTypeId::SQLNULL:
 	case LogicalTypeId::UNKNOWN:
@@ -356,11 +351,9 @@ LogicalType ArraySliceResolveTypes(ResolveReturnTypeInput &input) {
 		throw BinderException("ARRAY_SLICE can only operate on LISTs and VARCHARs");
 	}
 
-	// empty bounds keep their (empty list) type - the other bounds are cast to BIGINT
+	// a bound is a BIGINT, or omitted
 	for (idx_t i = 1; i < 3; i++) {
-		if (!IsEmptySliceBound(input, i)) {
-			input.CastArgument(i, LogicalType::BIGINT);
-		}
+		IsEmptySliceBound(input, input.GetArgumentType(i), i);
 	}
 	return return_type;
 }
@@ -368,6 +361,17 @@ LogicalType ArraySliceResolveTypes(ResolveReturnTypeInput &input) {
 unique_ptr<FunctionData> ArraySliceBind(BindScalarFunctionInput &input) {
 	auto &bound_function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();
+	// an array and JSON are cast to the type they are sliced as
+	const auto sliced_type = arguments[0]->GetReturnType();
+	if (sliced_type.id() == LogicalTypeId::ARRAY || sliced_type.IsJSONType()) {
+		input.CastArgument(0, bound_function.GetReturnType());
+	}
+	// omitted bounds keep their (empty list) type - the other bounds are cast to BIGINT
+	for (idx_t i = 1; i < 3; i++) {
+		if (!IsEmptySliceBound(input, arguments[i]->GetReturnType(), i)) {
+			input.CastArgument(i, LogicalType::BIGINT);
+		}
+	}
 	bool begin_is_empty = arguments[1]->GetReturnType().id() == LogicalTypeId::LIST;
 	bool end_is_empty = arguments[2]->GetReturnType().id() == LogicalTypeId::LIST;
 	return make_uniq<ListSliceBindData>(bound_function.GetReturnType(), begin_is_empty, end_is_empty);
@@ -456,7 +460,7 @@ ScalarFunctionSet ListSliceFun::GetFunctions() {
 	                       .AddParameter("list", TypeName::VARIABLE("T"))
 	                       .AddParameter("begin", TypeName::VARIABLE("U"))
 	                       .AddParameter("end", TypeName::VARIABLE("V"))
-	                       .SetReturnType(ReturnType::ANY(ArraySliceResolveTypes)),
+	                       .SetReturnType(ReturnType::ANY(ArraySliceReturnType)),
 	                   ArraySliceFunction, ArraySliceBind);
 	fun.SetStatisticsCallback(ArraySlicePropagateStats);
 	fun.SetUnbindCallback(ArraySliceUnbind);

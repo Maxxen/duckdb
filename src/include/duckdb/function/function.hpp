@@ -335,9 +335,9 @@ private:
 class ResolveReturnTypeInput;
 
 //! Resolves the return type of a call from its arguments. It runs once the overload is selected and its arguments
-//! are cast to the declared types, before the bind callback. It holds no bind data, and the only thing it can change
-//! is the type an argument is cast to
-typedef LogicalType (*resolve_return_type_t)(ResolveReturnTypeInput &input);
+//! are cast to the declared types, before the bind callback. It holds no bind data and changes nothing: a function
+//! that executes on other types than it is passed casts its arguments in bind
+typedef LogicalType (*resolve_return_type_t)(const ResolveReturnTypeInput &input);
 
 //! What a function returns: a type it declares by name, a table, or a type that is only known after binding
 class ReturnType {
@@ -968,7 +968,7 @@ public:
 	DUCKDB_API Binder &GetBinder();
 	//! A binder for the functions the bind nests: it binds as this function is bound, within its query or within its
 	//! fixed decimal width
-	DUCKDB_API FunctionBinder NestedFunctionBinder();
+	DUCKDB_API FunctionBinder NestedFunctionBinder() const;
 	//! The widest DECIMAL the bind constructs: the limit of the binder, the fixed limit of a bind outside of a query
 	//! (a deserialized function is rebound within the width it was bound in), or the max_decimal_width setting
 	DUCKDB_API DecimalWidthLimit GetDecimalWidthLimit() const;
@@ -1018,10 +1018,10 @@ private:
 };
 
 //! Input of the resolve_return_type callback: the arguments of the call, in the order the signature declares them -
-//! [standard | *args | keyword-only | **kwargs], defaults included. The arguments can be cast, nothing else changes
+//! [standard | *args | keyword-only | **kwargs], defaults included. Nothing can be changed
 class ResolveReturnTypeInput : private BindFunctionInput {
 public:
-	ResolveReturnTypeInput(ClientContext &context_p, BoundSimpleFunction &function_p,
+	ResolveReturnTypeInput(ClientContext &context_p, const BoundSimpleFunction &function_p,
 	                       const FunctionSignature &signature_p, vector<unique_ptr<Expression>> &arguments_p,
 	                       optional_ptr<Binder> binder_p = nullptr,
 	                       optional_ptr<const DecimalWidthLimit> decimal_width_limit_p = nullptr)
@@ -1053,13 +1053,10 @@ public:
 	DUCKDB_API bool HasParameter(idx_t arg_idx) const;
 	//! Where an argument is in the query - for error messages
 	DUCKDB_API QueryErrorContext GetArgumentLocation(idx_t arg_idx) const;
-	//! Casts an argument to the given type, which the function then receives it as. For an argument that is passed
-	//! as it is (to a type variable or ANY) and that the function executes on as another type
-	DUCKDB_API void CastArgument(idx_t arg_idx, const LogicalType &type);
 
 private:
-	BoundSimpleFunction &function;
-	vector<unique_ptr<Expression>> &arguments;
+	const BoundSimpleFunction &function;
+	const vector<unique_ptr<Expression>> &arguments;
 };
 
 } // namespace duckdb

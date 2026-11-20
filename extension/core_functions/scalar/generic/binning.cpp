@@ -478,20 +478,21 @@ ScalarFunctionSet GetBinTypeOverloads() {
 	return overloads;
 }
 
-//! MIN and MAX are cast to the type the bins are computed as: the bin type they match best, selected like an overload.
-//! While internally the bins are computed over a unified type, equi_width_bins returns the type of the input MAX
-LogicalType EquiWidthResolveTypes(ResolveReturnTypeInput &input) {
-	auto min_type = input.GetArgumentType(0);
-	auto max_type = input.GetArgumentType(1);
+//! The type the bins of MIN and MAX are computed as: the bin type they match best, selected like an overload
+vector<LogicalType> SelectBinTypes(ClientContext &context, const LogicalType &min_type, const LogicalType &max_type) {
 	auto overloads = GetBinTypeOverloads();
-	auto selected =
-	    FunctionBinder::SelectFunction(input.GetClientContext(), overloads, vector<LogicalType> {min_type, max_type});
+	auto selected = FunctionBinder::SelectFunction(context, overloads, vector<LogicalType> {min_type, max_type});
 	if (!selected) {
 		selected.GetError().Throw();
 	}
-	auto bin_types = selected.GetBinding().GetArgumentTypes();
-	input.CastArgument(0, bin_types[0]);
-	input.CastArgument(1, bin_types[1]);
+	return selected.GetBinding().GetArgumentTypes();
+}
+
+//! While internally the bins are computed over a unified type, equi_width_bins returns the type of the input MAX
+LogicalType EquiWidthReturnType(const ResolveReturnTypeInput &input) {
+	auto &max_type = input.GetArgumentType(1);
+	// MIN and MAX have to match a bin type
+	SelectBinTypes(input.GetClientContext(), input.GetArgumentType(0), max_type);
 
 	switch (max_type.id()) {
 	case LogicalTypeId::SQLNULL:
@@ -520,6 +521,12 @@ scalar_function_t GetEquiWidthBinFunction(const LogicalType &bin_type) {
 
 unique_ptr<FunctionData> EquiWidthBind(BindScalarFunctionInput &input) {
 	auto &bound_function = input.GetBoundFunction();
+	auto &arguments = input.GetArguments();
+	// MIN and MAX are cast to the type the bins are computed as
+	auto bin_types =
+	    SelectBinTypes(input.GetClientContext(), arguments[0]->GetReturnType(), arguments[1]->GetReturnType());
+	input.CastArgument(0, bin_types[0]);
+	input.CastArgument(1, bin_types[1]);
 	bound_function.SetFunctionCallback(GetEquiWidthBinFunction(bound_function.GetArguments()[0]));
 	return nullptr;
 }
@@ -546,7 +553,7 @@ ScalarFunctionSet EquiWidthBinsFun::GetFunctions() {
 	                            .AddParameter("max", TypeName::VARIABLE("MAX"))
 	                            .AddParameter("bin_count", LogicalType::BIGINT)
 	                            .AddParameter("nice_rounding", LogicalType::BOOLEAN)
-	                            .SetReturnType(ReturnType::ANY(EquiWidthResolveTypes)),
+	                            .SetReturnType(ReturnType::ANY(EquiWidthReturnType)),
 	                        UnsupportedEquiWidth, EquiWidthBind);
 	function.SetSerializeCallback(EquiWidthBinSerialize);
 	function.SetDeserializeCallback(EquiWidthBinDeserialize);

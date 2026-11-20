@@ -84,21 +84,26 @@ static void ListResizeFunction(DataChunk &args, ExpressionState &, Vector &resul
 	}
 }
 
-//! The list is resized to a UBIGINT size, and padded with a value of its element type
-static LogicalType ListResizeResolveTypes(ResolveReturnTypeInput &input) {
+//! A resized list is of the type of the list - a constant NULL list is resized to NULL, whatever it is padded with
+static LogicalType ListResizeReturnType(const ResolveReturnTypeInput &input) {
 	D_ASSERT(input.GetArgumentCount() == 2 || input.GetArgumentCount() == 3);
-	input.CastArgument(1, LogicalType::UBIGINT);
-
-	// a constant NULL list is resized to NULL, whatever it is padded with
 	auto list_type = input.GetArgumentType(0);
 	auto constant_list = input.TryGetConstant(0);
 	if (ListType::GetChildType(list_type).id() == LogicalTypeId::SQLNULL && constant_list && constant_list->IsNull()) {
 		return LogicalType::SQLNULL;
 	}
-	if (input.GetArgumentCount() == 3 && input.GetArgumentType(2).id() != LogicalTypeId::SQLNULL) {
-		input.CastArgument(2, ListType::GetChildType(list_type));
-	}
 	return list_type;
+}
+
+//! The list is resized to a UBIGINT size, and padded with a value of its element type
+static unique_ptr<FunctionData> ListResizeBind(BindScalarFunctionInput &input) {
+	auto &arguments = input.GetArguments();
+	input.CastArgument(1, LogicalType::UBIGINT);
+	const bool is_null_list = input.GetBoundFunction().GetReturnType().id() == LogicalTypeId::SQLNULL;
+	if (!is_null_list && arguments.size() == 3 && arguments[2]->GetReturnType().id() != LogicalTypeId::SQLNULL) {
+		input.CastArgument(2, ListType::GetChildType(arguments[0]->GetReturnType()));
+	}
+	return VariableReturnBindData::Bind(input);
 }
 
 ScalarFunctionSet ListResizeFun::GetFunctions() {
@@ -107,8 +112,8 @@ ScalarFunctionSet ListResizeFun::GetFunctions() {
 	                              .AddVariable("SIZE")
 	                              .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                              .AddParameter("size", TypeName::VARIABLE("SIZE"))
-	                              .SetReturnType(ReturnType::ANY(ListResizeResolveTypes)),
-	                          ListResizeFunction, VariableReturnBindData::Bind);
+	                              .SetReturnType(ReturnType::ANY(ListResizeReturnType)),
+	                          ListResizeFunction, ListResizeBind);
 	simple_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	simple_fun.SetFallible();
 	ScalarFunction default_value_fun(FunctionSignature()
@@ -118,8 +123,8 @@ ScalarFunctionSet ListResizeFun::GetFunctions() {
 	                                     .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                                     .AddParameter("size", TypeName::VARIABLE("SIZE"))
 	                                     .AddParameter("value", TypeName::VARIABLE("VALUE"))
-	                                     .SetReturnType(ReturnType::ANY(ListResizeResolveTypes)),
-	                                 ListResizeFunction, VariableReturnBindData::Bind);
+	                                     .SetReturnType(ReturnType::ANY(ListResizeReturnType)),
+	                                 ListResizeFunction, ListResizeBind);
 	default_value_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	default_value_fun.SetFallible();
 	ScalarFunctionSet list_resize_set("list_resize");

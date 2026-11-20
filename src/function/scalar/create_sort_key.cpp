@@ -65,7 +65,7 @@ static void VerifyDecodeSortKeyType(const LogicalType &sort_key_type, bool all_c
 }
 
 //! A sort key over fixed-size keys that fit in 8 bytes is a BIGINT, any other one a BLOB
-LogicalType CreateSortKeyReturnType(ResolveReturnTypeInput &input) {
+LogicalType CreateSortKeyReturnType(const ResolveReturnTypeInput &input) {
 	bool all_constant = true;
 	idx_t constant_size = 0;
 	for (idx_t i = 0; i < input.GetArgumentCount(); i += 2) {
@@ -1048,7 +1048,7 @@ bool CreateSortKeyHelpers::IsNonNullSortKey(const Expression &expression) {
 namespace {
 
 //! A struct of the columns the constant column definitions describe
-LogicalType DecodeSortKeyReturnType(ResolveReturnTypeInput &input) {
+LogicalType DecodeSortKeyReturnType(const ResolveReturnTypeInput &input) {
 	auto &context = input.GetClientContext();
 	const auto argument_count = input.GetArgumentCount();
 	if ((argument_count - 1) % 2 != 0) {

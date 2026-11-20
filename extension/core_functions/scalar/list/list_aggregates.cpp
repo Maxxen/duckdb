@@ -484,9 +484,8 @@ bool IsConstantNullList(const INPUT &input, const LogicalType &list_type) {
 	return list && list->IsNull();
 }
 
-//! The return type of the aggregate that is named, applied to the elements of the list - they are cast to the type the
-//! aggregate takes them as
-LogicalType ListAggregateResolveTypes(ResolveReturnTypeInput &input) {
+//! The return type of the aggregate that is named, applied to the elements of the list
+LogicalType ListAggregateReturnType(const ResolveReturnTypeInput &input) {
 	if (IsConstantNullList(input, input.GetArgumentType(0))) {
 		return LogicalType::SQLNULL;
 	}
@@ -508,7 +507,6 @@ LogicalType ListAggregateResolveTypes(ResolveReturnTypeInput &input) {
 	auto bound_aggr_function =
 	    BindListAggregate<true>(function_binder, ListType::GetChildType(input.GetArgumentType(0)),
 	                            input.GetConstant(1).ToString(), std::move(extra_arguments));
-	input.CastArgument(0, LogicalType::LIST(bound_aggr_function->Function().GetArguments()[0]));
 	return bound_aggr_function->Function().GetReturnType();
 }
 
@@ -534,6 +532,16 @@ unique_ptr<FunctionData> ListAggregatesBind(BindScalarFunctionInput &input) {
 	auto function_name = IS_AGGR ? input.GetConstant(1).ToString() : string("histogram");
 	auto child_type = ListType::GetChildType(arguments[0]->GetReturnType());
 	auto function_binder = input.NestedFunctionBinder();
+	if (IS_AGGR) {
+		// the elements are cast to the type the aggregate takes them as
+		vector<unique_ptr<Expression>> probe_arguments;
+		for (auto &argument : extra_arguments) {
+			probe_arguments.push_back(argument->Copy());
+		}
+		auto probe = BindListAggregate<true>(function_binder, child_type, function_name, std::move(probe_arguments));
+		child_type = probe->Function().GetArguments()[0];
+		input.CastArgument(0, LogicalType::LIST(child_type));
+	}
 	auto bound_aggr_function =
 	    BindListAggregate<IS_AGGR>(function_binder, child_type, function_name, std::move(extra_arguments));
 
@@ -577,7 +585,7 @@ ScalarFunction ListAggregateFun::GetFunction() {
 	                                 .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                                 .AddParameter("function_name", LogicalType::VARCHAR)
 	                                 .AddArgs("args", LogicalType::ANY)
-	                                 .SetReturnType(ReturnType::ANY(ListAggregateResolveTypes)),
+	                                 .SetReturnType(ReturnType::ANY(ListAggregateReturnType)),
 	                             ListAggregateFunction, ListAggregateBind, nullptr, ListAggregatesInitLocalState);
 	result.SetFallible();
 	result.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

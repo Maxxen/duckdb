@@ -551,7 +551,12 @@ public:
 			bound_data = FunctionDeserialize(deserializer, bound_function);
 		}
 
-		if (TypeRequiresAssignment(bound_function.GetReturnType())) {
+		// A return type that is declared in terms of the arguments is taken from the plan, unless the deserialize
+		// callback set it: no bind derived it from these arguments, whose recorded types can differ from the call's
+		const bool follows_from_arguments =
+		    !FunctionBinder::BindReturnPattern(&context, function->GetSignature()).IsComplete() &&
+		    bound_function.GetReturnType() == binding->return_type;
+		if (follows_from_arguments || TypeRequiresAssignment(bound_function.GetReturnType())) {
 			bound_function.SetReturnType(std::move(return_type));
 		}
 

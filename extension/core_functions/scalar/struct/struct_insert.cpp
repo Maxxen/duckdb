@@ -31,7 +31,7 @@ static void StructInsertFunction(DataChunk &args, ExpressionState &state, Vector
 }
 
 //! The struct with the named arguments added as fields
-static LogicalType StructInsertReturnType(ResolveReturnTypeInput &input) {
+static LogicalType StructInsertReturnType(const ResolveReturnTypeInput &input) {
 	auto &struct_type = input.GetArgumentType(0);
 	if (LogicalTypeId::STRUCT != struct_type.id()) {
 		throw InvalidInputException("The first argument to struct_insert must be a STRUCT");

@@ -10,7 +10,7 @@ static void ValueManyFunction(DataChunk &args, ExpressionState &state, Vector &r
 	JSONExecutors::ExecuteMany<string_t>(args, state, result, JSONCommon::JSONValue);
 }
 
-static LogicalType ValueReturnType(ResolveReturnTypeInput &input) {
+static LogicalType ValueReturnType(const ResolveReturnTypeInput &input) {
 	return JSONReadFunctionData::ResolveReturnType(input, LogicalType::VARCHAR);
 }
 
