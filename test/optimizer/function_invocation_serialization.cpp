@@ -744,3 +744,72 @@ TEST_CASE("Table function defaults survive serialization", "[serialization][func
 	}
 	connection.Rollback();
 }
+
+namespace {
+
+//! Registers the overloads of a built-in aggregate as "changed_result"
+static void InstallChangedResult(ClientContext &context, const string &source) {
+	auto &entry =
+	    Catalog::GetEntry<AggregateFunctionCatalogEntry>(context, QualifiedName("system", "main", Identifier(source)));
+	auto functions = entry.functions;
+	functions.name = Identifier("changed_result");
+	CreateAggregateFunctionInfo info(std::move(functions));
+	Catalog::GetSystemCatalog(context).CreateFunction(context, info);
+}
+
+} // namespace
+
+TEST_CASE("Plans stay readable when an aggregate or window function changes its return type",
+          "[serialization][function_invocation]") {
+	const string setup = "CREATE TABLE t AS SELECT (i % 3)::INTEGER AS g, i::INTEGER AS x FROM range(10) r(i)";
+	// the writer's function returns the INTEGER it is given, the reader's a BIGINT
+	DuckDB writer_db(nullptr);
+	Connection writer(writer_db);
+	writer.BeginTransaction();
+	REQUIRE_NO_FAIL(writer.Query(setup));
+	InstallChangedResult(*writer.context, "min");
+	DuckDB reader_db(nullptr);
+	Connection reader(reader_db);
+	reader.BeginTransaction();
+	REQUIRE_NO_FAIL(reader.Query(setup));
+	InstallChangedResult(*reader.context, "count");
+
+	struct Case {
+		string written;
+		string expected;
+	};
+	vector<Case> cases {
+	    {"SELECT g, changed_result(x) FROM t GROUP BY g ORDER BY g",
+	     "SELECT g, changed_result(x)::INTEGER FROM t GROUP BY g ORDER BY g"},
+	    {"SELECT changed_result(x) + 1 FROM t", "SELECT changed_result(x)::INTEGER + 1 FROM t"},
+	    {"SELECT g, sum(x), changed_result(x) FROM t GROUP BY g HAVING changed_result(x) > 3 ORDER BY g",
+	     "SELECT g, sum(x), changed_result(x)::INTEGER FROM t GROUP BY g HAVING changed_result(x)::INTEGER > 3 "
+	     "ORDER BY g"},
+	    {"SELECT g, changed_result(x), grouping(g) FROM t GROUP BY ROLLUP (g) ORDER BY ALL",
+	     "SELECT g, changed_result(x)::INTEGER, grouping(g) FROM t GROUP BY ROLLUP (g) ORDER BY ALL"},
+	    {"SELECT g, x, changed_result(x) OVER (PARTITION BY g ORDER BY x) FROM t ORDER BY g, x",
+	     "SELECT g, x, CAST(changed_result(x) OVER (PARTITION BY g ORDER BY x) AS INTEGER) FROM t ORDER BY g, x"},
+	    {"SELECT g, changed_result(changed_result(x)) OVER (ORDER BY g) FROM t GROUP BY g ORDER BY g",
+	     "SELECT g, CAST(changed_result(changed_result(x)::INTEGER) OVER (ORDER BY g) AS INTEGER) FROM t GROUP BY g "
+	     "ORDER BY g"}};
+	for (auto &test_case : cases) {
+		CAPTURE(test_case.written);
+		Parser parser(*writer.context);
+		parser.ParseQuery(test_case.written);
+		Planner planner(*writer.context);
+		planner.CreatePlan(std::move(parser.statements[0]));
+		MemoryStream stream(Allocator::DefaultAllocator());
+		BinarySerializer::Serialize(*planner.plan, stream, SerializationOptions());
+		stream.Rewind();
+
+		bound_parameter_map_t parameters;
+		auto plan = BinaryDeserializer::Deserialize<LogicalOperator>(stream, *reader.context, parameters);
+		plan->ResolveOperatorTypes();
+		auto actual = reader.Query(make_uniq<LogicalPlanStatement>(std::move(plan)));
+		auto expected = reader.Query(test_case.expected);
+		REQUIRE_NO_FAIL(*expected);
+		RequireSameValues(*expected, *actual);
+	}
+	reader.Rollback();
+	writer.Rollback();
+}

@@ -2,6 +2,7 @@
 #include "duckdb/catalog/catalog_entry/window_function_catalog_entry.hpp"
 #include "duckdb/parser/expression/window_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
+#include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/parser/expression_map.hpp"
 
@@ -329,8 +330,15 @@ unique_ptr<Expression> BoundWindowExpression::Deserialize(Deserializer &deserial
 		window = make_uniq<BoundWindowFunction>(std::move(entry.first));
 		bind_info = std::move(entry.second);
 	}
+	// the function may no longer return the type the plan recorded
+	auto function_type = return_type;
+	if (aggregate) {
+		function_type = aggregate->GetReturnType();
+	} else if (window) {
+		function_type = window->GetReturnType();
+	}
 	auto result =
-	    make_uniq<BoundWindowExpression>(return_type, std::move(aggregate), std::move(window), std::move(bind_info));
+	    make_uniq<BoundWindowExpression>(function_type, std::move(aggregate), std::move(window), std::move(bind_info));
 	unique_ptr<Expression> expr;
 	result->children = std::move(children);
 	deserializer.ReadProperty(202, "partitions", result->partitions);
@@ -397,6 +405,11 @@ unique_ptr<Expression> BoundWindowExpression::Deserialize(Deserializer &deserial
 		result->window = make_uniq<BoundWindowFunction>(std::move(bound_func));
 	}
 
+	if (function_type != return_type) {
+		// return type mismatch - push a cast
+		auto &context = deserializer.Get<ClientContext &>();
+		return BoundCastExpression::AddCastToType(context, std::move(result), return_type);
+	}
 	return std::move(result);
 }
 
