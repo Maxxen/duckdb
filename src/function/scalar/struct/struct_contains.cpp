@@ -1,3 +1,4 @@
+#include "duckdb/common/types/decimal.hpp"
 #include "duckdb/common/vector/constant_vector.hpp"
 #include "duckdb/common/vector/flat_vector.hpp"
 #include "duckdb/common/vector/map_vector.hpp"
@@ -250,7 +251,8 @@ static LogicalType StructContainsResolveTypes(ResolveReturnTypeInput &input) {
 	LogicalType target_type = input.GetArgumentType(1);
 	for (auto &child : struct_children) {
 		LogicalType max_type;
-		if (LogicalType::TryGetMaxLogicalType(context, child.second, target_type, max_type)) {
+		if (LogicalType::TryGetMaxLogicalType(context, child.second, target_type, max_type,
+		                                      input.GetDecimalWidthLimit())) {
 			target_type = max_type;
 		}
 	}
@@ -258,7 +260,8 @@ static LogicalType StructContainsResolveTypes(ResolveReturnTypeInput &input) {
 	child_list_t<LogicalType> cast_children;
 	for (auto &child : struct_children) {
 		LogicalType max_type;
-		if (LogicalType::TryGetMaxLogicalType(context, child.second, target_type, max_type) &&
+		if (LogicalType::TryGetMaxLogicalType(context, child.second, target_type, max_type,
+		                                      input.GetDecimalWidthLimit()) &&
 		    max_type == target_type) {
 			cast_children.emplace_back(child.first, target_type);
 		} else {

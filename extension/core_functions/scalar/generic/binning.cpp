@@ -524,7 +524,7 @@ unique_ptr<FunctionData> EquiWidthBind(BindScalarFunctionInput &input) {
 	return nullptr;
 }
 
-void EquiWidthBinSerialize(Serializer &, const optional_ptr<FunctionData>, const BoundScalarFunction &) {
+void EquiWidthBinSerialize(Serializer &, const optional_ptr<const FunctionData>, const BoundScalarFunction &) {
 	return;
 }
 

@@ -55,7 +55,7 @@ TEST_CASE("Serialize-only table functions retain rebinding inputs in legacy plan
 		return make_uniq<TableFunctionData>();
 	};
 	SECTION("Serialize callback without deserialize callback") {
-		function.serialize = [](Serializer &, const optional_ptr<FunctionData>, const BoundTableFunction &) {
+		function.serialize = [](Serializer &, const optional_ptr<const FunctionData>, const BoundTableFunction &) {
 			throw NotImplementedException("This scan cannot serialize its bind data");
 		};
 	}
@@ -124,7 +124,8 @@ TEST_CASE("Table function bind data remains readable after removing its serializ
 	                 vector<Identifier> &) -> unique_ptr<FunctionData> {
 		throw InternalException("Serialized bind data must not be rebound");
 	};
-	writer.serialize = [](Serializer &serializer, const optional_ptr<FunctionData> data, const BoundTableFunction &) {
+	writer.serialize = [](Serializer &serializer, const optional_ptr<const FunctionData> data,
+	                      const BoundTableFunction &) {
 		serializer.WriteProperty(100, "value", data->Cast<LegacyScanBindData>().value);
 	};
 	writer.deserialize = [](Deserializer &deserializer, BoundTableFunction &) -> unique_ptr<FunctionData> {
@@ -482,7 +483,7 @@ static unique_ptr<FunctionData> KeywordScanBind(ClientContext &context, TableFun
 	return make_uniq<KeywordScanBindData>(entry == input.named_parameters.end() ? Value(type) : entry->second);
 }
 
-static void KeywordScanSerialize(Serializer &serializer, const optional_ptr<FunctionData> data,
+static void KeywordScanSerialize(Serializer &serializer, const optional_ptr<const FunctionData> data,
                                  const BoundTableFunction &) {
 	serializer.WriteProperty(100, "value", data->Cast<KeywordScanBindData>().value);
 }

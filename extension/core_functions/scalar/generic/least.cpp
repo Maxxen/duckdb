@@ -1,3 +1,4 @@
+#include "duckdb/common/types/decimal.hpp"
 #include "core_functions/scalar/generic_functions.hpp"
 #include "duckdb/common/operator/comparison_operators.hpp"
 #include "duckdb/common/smaller_binary.hpp"
@@ -52,7 +53,7 @@ struct LeastGreatestSortKeyState : public FunctionLocalState {
 
 template <class OP>
 unique_ptr<FunctionLocalState> LeastGreatestSortKeyInit(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                        FunctionData *bind_data) {
+                                                        optional_ptr<const FunctionData> bind_data) {
 	return make_uniq<LeastGreatestSortKeyState>(expr.GetChildren().size(), OP::NullOrdering());
 }
 

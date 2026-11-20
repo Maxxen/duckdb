@@ -570,7 +570,7 @@ unique_ptr<FunctionData> MinMaxNBind(BindAggregateFunctionInput &input) {
 			auto expr = function_binder.BindAggregateFunction(collated_function, std::move(collated_arguments));
 			arguments = std::move(expr->GetChildrenMutable());
 			function.ReplaceImplementation(expr->Function());
-			return std::move(expr->BindInfoMutable());
+			return expr->BindInfo() ? expr->BindInfo()->Copy() : nullptr;
 		}
 	}
 

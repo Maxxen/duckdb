@@ -499,6 +499,9 @@ AggregateFunctionCallbacks GetDecimalArgMinMaxCallbacks(const LogicalType &by_ty
 		return GetArgMinMaxCallbacksBy<OP, int32_t>(by_type, null_handling);
 	case PhysicalType::INT64:
 		return GetArgMinMaxCallbacksBy<OP, int64_t>(by_type, null_handling);
+	case PhysicalType::VARCHAR:
+		// wide decimals are BIGNUM blobs
+		return GetArgMinMaxCallbacksBy<OP, string_t>(by_type, null_handling);
 	default:
 		return GetArgMinMaxCallbacksBy<OP, hugeint_t>(by_type, null_handling);
 	}
@@ -587,6 +590,8 @@ void AddArgMinMaxFunctions(AggregateFunctionSet &fun, const ArgMinMaxNullHandlin
 	                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, bind);
 	function.SetCallbacks(GetGenericArgMinMaxCallbacks<GENERIC_VECTOR_OP>(null_handling));
 	function.SetBindCallback(bind);
+	function.GetProperties().SetProperty(BoundAggregateExpression::NON_NULL_SELECTOR_DOMAIN_PROPERTY,
+	                                     Value::BOOLEAN(true));
 	fun.AddFunction(function);
 }
 

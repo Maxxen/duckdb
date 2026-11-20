@@ -58,20 +58,20 @@ struct ExportAggregateBindData : public FunctionData {
 		return aggr == other.aggr && state_size == other.state_size;
 	}
 
-	static ExportAggregateBindData &GetFrom(ExpressionState &state) {
+	static const ExportAggregateBindData &GetFrom(ExpressionState &state) {
 		auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
 		return func_expr.BindInfo()->Cast<ExportAggregateBindData>();
 	}
 };
 
-static AggregateStateLayout GetLayout(const BoundAggregateFunction &aggr, optional_ptr<FunctionData> bind_data) {
+static AggregateStateLayout GetLayout(const BoundAggregateFunction &aggr, optional_ptr<const FunctionData> bind_data) {
 	return aggr.GetStateType(bind_data);
 }
 
 // destroys the temporary underlying-aggregate states referenced by `states` (no-op if the aggregate has no
 // destructor). the combine/finalize paths below initialize underlying states into scratch buffers - without this
 // their owned heap (e.g. approx_top_k's hash map, approx_quantile's t-digest) would leak.
-static void DestroyExportStates(const BoundAggregateFunction &aggr, optional_ptr<FunctionData> bind_data,
+static void DestroyExportStates(const BoundAggregateFunction &aggr, optional_ptr<const FunctionData> bind_data,
                                 Vector &states, idx_t count, ArenaAllocator &allocator) {
 	if (count == 0 || !aggr.HasStateDestructorCallback()) {
 		return;
@@ -98,7 +98,7 @@ struct CombineState : public FunctionLocalState {
 };
 
 unique_ptr<FunctionLocalState> InitCombineState(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                FunctionData *bind_data_p) {
+                                                optional_ptr<const FunctionData> bind_data_p) {
 	auto &bind_data = bind_data_p->Cast<ExportAggregateBindData>();
 	return make_uniq<CombineState>(bind_data);
 }
@@ -120,7 +120,7 @@ struct FinalizeState : public FunctionLocalState {
 };
 
 unique_ptr<FunctionLocalState> InitFinalizeState(ExpressionState &state, const BoundFunctionExpression &expr,
-                                                 FunctionData *bind_data_p) {
+                                                 optional_ptr<const FunctionData> bind_data_p) {
 	auto &bind_data = bind_data_p->Cast<ExportAggregateBindData>();
 	return make_uniq<FinalizeState>(bind_data);
 }
@@ -233,12 +233,14 @@ void AggregateStateCombine(DataChunk &input, ExpressionState &state_p, Vector &r
 	}
 }
 
-// looks up the aggregate function with the given name in the catalog and binds it with the given argument types
+// looks up the aggregate function with the given name in the catalog and binds it with the given argument types,
+// within the decimal width of the function binder (the expression that rebinds the aggregate binds within it)
 // constant_parameters holds the values of arguments that must be re-bound with a specific constant
 // (e.g. string_agg's separator), keyed by argument index - all other arguments are bound with a NULL value
-unique_ptr<ExportAggregateBindData> BindExportedAggregate(ClientContext &context, const string &function_name,
+unique_ptr<ExportAggregateBindData> BindExportedAggregate(FunctionBinder &function_binder, const string &function_name,
                                                           const vector<LogicalType> &argument_types,
                                                           const map<idx_t, Value> &constant_parameters) {
+	auto &context = function_binder.context;
 	auto &func = Catalog::GetSystemCatalog(context).GetEntry<AggregateFunctionCatalogEntry>(
 	    context, QualifiedName(Catalog::GetSystemCatalog(context).GetName(), Identifier::DefaultSchema(),
 	                           Identifier(function_name)));
@@ -247,8 +249,8 @@ unique_ptr<ExportAggregateBindData> BindExportedAggregate(ClientContext &context
 	}
 	auto &aggr_entry = func.Cast<AggregateFunctionCatalogEntry>();
 
-	FunctionBinder function_binder(context);
-	auto best_function = FunctionBinder::SelectFunction(context, aggr_entry.functions, argument_types);
+	auto best_function = FunctionBinder::SelectFunction(context, aggr_entry.functions, argument_types, false,
+	                                                    function_binder.FixedDecimalWidthLimit());
 	if (!best_function.IsSuccess()) {
 		throw BinderException("Could not re-bind exported aggregate %s: %s", function_name,
 		                      best_function.GetError().Message());
@@ -359,8 +361,9 @@ void ParseStateParameters(const Value &parameters, vector<LogicalType> &argument
 // parses an ORDER BY spec (a list of {column, order} structs) - shared by the re-bind path and to_aggregate_state
 void ParseOrderBys(const Value &order_value, idx_t column_count, vector<SortedAggregateStateOrder> &orders);
 
-unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &context, const Identifier &name,
+unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(FunctionBinder &function_binder, const Identifier &name,
                                                                const LogicalType &arg_return_type) {
+	auto &context = function_binder.context;
 	if (!arg_return_type.IsAggregateState()) {
 		throw BinderException("Can only %s %s, not AGGREGATE_STATE", name, arg_return_type.ToString());
 	}
@@ -384,7 +387,7 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 	map<idx_t, Value> constant_parameters;
 	ParseStateParameters(entry->second, argument_types, constant_parameters);
 
-	auto inner = BindExportedAggregate(context, function_name, argument_types, constant_parameters);
+	auto inner = BindExportedAggregate(function_binder, function_name, argument_types, constant_parameters);
 
 	auto order_entry = ext_info->properties.find("order_bys");
 	if (order_entry == ext_info->properties.end()) {
@@ -423,15 +426,16 @@ unique_ptr<ExportAggregateBindData> BindAggregateStateInternal(ClientContext &co
 
 //! A state is finalized to what its aggregate returns
 LogicalType FinalizeReturnType(ResolveReturnTypeInput &input) {
-	auto bind_data =
-	    BindAggregateStateInternal(input.GetClientContext(), input.GetFunctionName(), input.GetArgumentType(0));
+	auto function_binder = input.NestedFunctionBinder();
+	auto bind_data = BindAggregateStateInternal(function_binder, input.GetFunctionName(), input.GetArgumentType(0));
 	return bind_data->aggr.GetReturnType();
 }
 
 unique_ptr<FunctionData> BindAggregateState(BindScalarFunctionInput &input) {
 	auto &arguments = input.GetArguments();
-	auto bind_data = BindAggregateStateInternal(input.GetClientContext(), input.GetBoundFunction().GetName(),
-	                                            arguments[0]->GetReturnType());
+	auto function_binder = input.NestedFunctionBinder();
+	auto bind_data =
+	    BindAggregateStateInternal(function_binder, input.GetBoundFunction().GetName(), arguments[0]->GetReturnType());
 
 	// combine - both arguments must be aggregate states of the same function with the same signature
 	if (arguments.size() == 2 && arguments[0]->GetReturnType() != arguments[1]->GetReturnType()) {
@@ -510,8 +514,8 @@ unique_ptr<FunctionData> CombineAggrBind(BindAggregateFunctionInput &input) {
 	auto &arguments = input.GetArguments();
 
 	D_ASSERT(arguments.size() == 1 || arguments.size() == 2);
-	auto bind_data =
-	    BindAggregateStateInternal(input.GetClientContext(), function.GetName(), arguments[0]->GetReturnType());
+	auto function_binder = input.NestedFunctionBinder();
+	auto bind_data = BindAggregateStateInternal(function_binder, function.GetName(), arguments[0]->GetReturnType());
 
 	// Copy underlying aggregate's callbacks into this function (same pattern as `ExportAggregateFunction::Bind`)
 	function.SetStateSizeCallback(bind_data->aggr.GetStateSizeCallback());
@@ -555,9 +559,15 @@ void CombineAggrUpdate(Vector inputs[], AggregateInputData &aggr_input_data, idx
 		target_data.WriteValue(state_values[i].GetValue());
 	}
 
+	// when the targets never keep source memory, the temporary states go into a scratch arena freed per call
+	unique_ptr<ArenaAllocator> scratch;
+	if (underlying_aggr.GetCombineSourceRetention() == AggregateCombineSourceRetention::NEVER_RETAINS) {
+		scratch = make_uniq<ArenaAllocator>(aggr_input_data.allocator.GetUnderlyingAllocator());
+	}
+	auto &source_allocator = scratch ? *scratch : aggr_input_data.allocator;
 	try {
 		AggregateStateSerialization::DeserializeStates(underlying_aggr, layout, inputs[0], count, temp_state_buf.get(),
-		                                               aggr_input_data.allocator, StateMemoryOwnership::BORROWED);
+		                                               source_allocator, StateMemoryOwnership::BORROWED);
 		AggregateInputData combine_input(bind_data.aggr, bind_data.bind_data.get(), aggr_input_data.allocator,
 		                                 AggregateCombineType::ALLOW_DESTRUCTIVE);
 		if (input_count == 2) {
@@ -565,10 +575,10 @@ void CombineAggrUpdate(Vector inputs[], AggregateInputData &aggr_input_data, idx
 		}
 		underlying_aggr.GetStateCombineCallback()(source_vec, target_vec, combine_input, count);
 	} catch (...) {
-		DestroyExportStates(underlying_aggr, bind_data.bind_data.get(), source_vec, count, aggr_input_data.allocator);
+		DestroyExportStates(underlying_aggr, bind_data.bind_data.get(), source_vec, count, source_allocator);
 		throw;
 	}
-	DestroyExportStates(underlying_aggr, bind_data.bind_data.get(), source_vec, count, aggr_input_data.allocator);
+	DestroyExportStates(underlying_aggr, bind_data.bind_data.get(), source_vec, count, source_allocator);
 }
 
 void CombineAggrFinalize(Vector &state, AggregateFinalizeInputData &aggr_input_data, Vector &result, idx_t count,
@@ -640,7 +650,7 @@ string OrderModifierToString(OrderType order_type, OrderByNullType null_order) {
 // the state layout (a struct) is aliased to AGGREGATE_STATE, with the function name and signature stored in the
 // extension type info so that the aggregate can be re-bound later (e.g. by FINALIZE/COMBINE)
 LogicalType CreateAggregateStateType(const BoundAggregateFunction &bound_function,
-                                     optional_ptr<FunctionData> bind_data) {
+                                     optional_ptr<const FunctionData> bind_data) {
 	auto layout = bound_function.GetStateType(bind_data);
 	auto ext_info = make_uniq<ExtensionTypeInfo>();
 	EncodeStateParameters(*ext_info, bound_function, layout);
@@ -650,7 +660,8 @@ LogicalType CreateAggregateStateType(const BoundAggregateFunction &bound_functio
 // constructs the AGGREGATE_STATE type for an ordered aggregate - the state is the buffer of values
 // (LIST<buffered_struct>), with the inner signature and the ORDER BY spec stored in the extension info
 LogicalType CreateSortedAggregateStateType(const BoundAggregateFunction &inner_function,
-                                           optional_ptr<FunctionData> inner_bind_data, const LogicalType &buffer_struct,
+                                           optional_ptr<const FunctionData> inner_bind_data,
+                                           const LogicalType &buffer_struct,
                                            const vector<SortedAggregateStateOrder> &orders) {
 	LogicalType state_layout = LogicalType::LIST(buffer_struct);
 	auto ext_info = make_uniq<ExtensionTypeInfo>();
@@ -668,8 +679,8 @@ LogicalType CreateSortedAggregateStateType(const BoundAggregateFunction &inner_f
 }
 
 // parses a single entry of the to_aggregate_state signature list - either a TYPE value (e.g. make_type('VARCHAR'))
-// or a string naming a type (e.g. 'VARCHAR')
-LogicalType ParseSignatureType(ClientContext &context, const Value &arg) {
+// or a string naming a type (e.g. 'VARCHAR'), bound within the decimal width limit of the bind
+LogicalType ParseSignatureType(ClientContext &context, const Value &arg, const DecimalWidthLimit &decimal_width_limit) {
 	if (arg.IsNull()) {
 		throw BinderException("to_aggregate_state: the signature cannot contain NULL values");
 	}
@@ -682,7 +693,7 @@ LogicalType ParseSignatureType(ClientContext &context, const Value &arg) {
 		if (StringUtil::CIEquals(name, "ANY")) {
 			return LogicalType::ANY;
 		}
-		return TransformStringToLogicalType(name, context);
+		return TransformStringToLogicalType(name, context, &decimal_width_limit);
 	}
 	throw BinderException("to_aggregate_state: the signature must be a list of types");
 }
@@ -803,10 +814,11 @@ unique_ptr<FunctionData> BindToAggregateState(INPUT &input, LogicalType &value_t
 	if (signature_val.type().id() != LogicalTypeId::LIST) {
 		throw BinderException("to_aggregate_state: the signature must be a list of types");
 	}
-	// the signature lists all of the argument types in order
+	// the signature lists all of the argument types in order, bound within the width limit of the bind
+	const auto decimal_width_limit = input.GetDecimalWidthLimit();
 	vector<LogicalType> argument_types;
 	for (auto &arg : ListValue::GetChildren(signature_val)) {
-		argument_types.push_back(ParseSignatureType(context, arg));
+		argument_types.push_back(ParseSignatureType(context, arg, decimal_width_limit));
 	}
 
 	// constant_parameters holds the values of arguments that must be re-bound with a specific constant rather than a
@@ -821,7 +833,8 @@ unique_ptr<FunctionData> BindToAggregateState(INPUT &input, LogicalType &value_t
 		entry.second = entry.second.CastAs(context, argument_types[entry.first]);
 	}
 
-	auto bind_data = BindExportedAggregate(context, function_name, argument_types, constant_parameters);
+	auto function_binder = input.NestedFunctionBinder();
+	auto bind_data = BindExportedAggregate(function_binder, function_name, argument_types, constant_parameters);
 	auto &aggr = bind_data->aggr;
 	if (!aggr.HasGetStateTypeCallback()) {
 		throw BinderException(
@@ -967,6 +980,23 @@ void ExportAggregateFunction::GetSortedStateOrders(const LogicalType &state_type
 	}
 	auto &buffer_struct = ListType::GetChildType(state_type);
 	ParseOrderBys(order_entry->second, StructType::GetChildTypes(buffer_struct).size(), orders);
+}
+
+bool ExportAggregateFunction::TryGetCombinedStateLayout(const BoundAggregateFunction &function,
+                                                        optional_ptr<const FunctionData> bind_data,
+                                                        AggregateStateLayout &layout) {
+	if (!bind_data || function.GetStateCombineCallback() != CombineAggrStateCombine) {
+		return false;
+	}
+	auto &combine_data = bind_data->Cast<ExportAggregateBindData>();
+	auto &aggr = combine_data.aggr;
+	// states with explicit export / import callbacks are not described by their field layout alone
+	if (!aggr.HasGetStateTypeCallback() || aggr.HasExportAggregateStateCallback() ||
+	    aggr.HasImportAggregateStateCallback()) {
+		return false;
+	}
+	layout = aggr.GetStateType(combine_data.bind_data.get());
+	return true;
 }
 
 void ExportAggregateFunction::SetStateExport(BoundAggregateExpression &aggregate, LogicalType state_layout) {

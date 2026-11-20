@@ -196,7 +196,8 @@ string TypeConstructor::ToString() const {
 }
 
 LogicalType TypeConstructorSet::Bind(optional_ptr<ClientContext> context, const LogicalType &base_type,
-                                     const vector<TypeArgument> &arguments, QueryLocation query_location) const {
+                                     const vector<TypeArgument> &arguments, QueryLocation query_location,
+                                     optional_ptr<const DecimalWidthLimit> decimal_width_limit) const {
 	D_ASSERT(!functions.empty());
 
 	// Fast path for the common case: a single constructor taking no modifiers, which is every type that is not
@@ -208,7 +209,7 @@ LogicalType TypeConstructorSet::Bind(optional_ptr<ClientContext> context, const 
 				throw BinderException(query_location, "Type %s does not take any type parameters", name);
 			}
 			vector<TypeArgument> modifiers;
-			BindLogicalTypeInput input {context, base_type, modifiers, query_location};
+			BindLogicalTypeInput input {context, base_type, modifiers, query_location, decimal_width_limit};
 			return functions[0]->GetBindFunction()(input);
 		}
 	}
@@ -239,7 +240,7 @@ LogicalType TypeConstructorSet::Bind(optional_ptr<ClientContext> context, const 
 	auto &constructor = *constructor_ptr;
 
 	auto modifiers = NormalizeArguments(name, binding, arguments, query_location);
-	BindLogicalTypeInput input {context, base_type, modifiers, query_location};
+	BindLogicalTypeInput input {context, base_type, modifiers, query_location, decimal_width_limit};
 	return constructor.GetBindFunction()(input);
 }
 

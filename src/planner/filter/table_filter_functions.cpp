@@ -39,10 +39,12 @@ void GetThresholdAndVectorsToCheck(SelectivityOptionalFilterType type, float &se
 	static constexpr float MIN_MAX_THRESHOLD = 0.9f;
 	static constexpr float BF_THRESHOLD = 0.5f;
 	static constexpr float PRF_THRESHOLD = 0.5f;
+	static constexpr float IN_THRESHOLD = 0.5f;
 
 	static constexpr idx_t MIN_MAX_CHECK_N = 6;
 	static constexpr idx_t BF_CHECK_N = 6;
 	static constexpr idx_t PRF_CHECK_N = 6;
+	static constexpr idx_t IN_CHECK_N = 6;
 
 	switch (type) {
 	case SelectivityOptionalFilterType::MIN_MAX:
@@ -56,6 +58,10 @@ void GetThresholdAndVectorsToCheck(SelectivityOptionalFilterType type, float &se
 	case SelectivityOptionalFilterType::PRF:
 		selectivity_threshold = PRF_THRESHOLD;
 		n_vectors_to_check = PRF_CHECK_N;
+		return;
+	case SelectivityOptionalFilterType::IN_FILTER:
+		selectivity_threshold = IN_THRESHOLD;
+		n_vectors_to_check = IN_CHECK_N;
 		return;
 	default:
 		throw NotImplementedException("GetThresholdAndVectorsToCheck");
@@ -109,7 +115,7 @@ unique_ptr<Expression> CreateDynamicFilterExpression(shared_ptr<DynamicFilterDat
 	return FunctionBinder::BindScalarFunction(nullptr, function, std::move(arguments), std::move(bind_data));
 }
 
-void TableFilterFunctionSerialize(Serializer &serializer, const optional_ptr<FunctionData> bind_data,
+void TableFilterFunctionSerialize(Serializer &serializer, const optional_ptr<const FunctionData> bind_data,
                                   const BoundScalarFunction &function) {
 	// Runtime state cannot be serialized - write nothing
 }

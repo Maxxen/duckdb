@@ -1,4 +1,5 @@
 #include "duckdb/common/vector/array_vector.hpp"
+#include "duckdb/common/types/decimal.hpp"
 #include "core_functions/scalar/array_functions.hpp"
 #include "core_functions/array_kernels.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"

@@ -10,6 +10,7 @@
 #include "duckdb/common/exception/binder_exception.hpp"
 #include "duckdb/common/numeric_utils.hpp"
 #include "duckdb/common/types.hpp"
+#include "duckdb/common/types/decimal.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/common/types/vector.hpp"
 #include "duckdb/common/vector/flat_vector.hpp"
@@ -150,7 +151,10 @@ static LogicalType TransformReturnType(ResolveReturnTypeInput &input) {
 		                      expr_return_type);
 	}
 	auto type_str = input.GetNonNullConstant(1);
-	auto shredded_type = TransformStringToLogicalType(type_str.GetValue<string>(), input.GetClientContext());
+	// the shredding type is bound within the decimal width limit of the bind
+	const auto decimal_width_limit = input.GetDecimalWidthLimit();
+	auto shredded_type =
+	    TransformStringToLogicalType(type_str.GetValue<string>(), input.GetClientContext(), &decimal_width_limit);
 	return VariantColumnWriter::GetParquetVariantType(shredded_type);
 }
 

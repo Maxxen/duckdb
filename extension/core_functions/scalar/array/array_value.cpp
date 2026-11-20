@@ -1,3 +1,4 @@
+#include "duckdb/common/types/decimal.hpp"
 #include "duckdb/common/vector/array_vector.hpp"
 #include "core_functions/scalar/array_functions.hpp"
 #include "duckdb/function/scalar/nested_functions.hpp"

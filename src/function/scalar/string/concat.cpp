@@ -1,3 +1,4 @@
+#include "duckdb/common/types/decimal.hpp"
 #include "duckdb/common/vector/constant_vector.hpp"
 #include "duckdb/common/vector/flat_vector.hpp"
 #include "duckdb/common/vector/list_vector.hpp"
@@ -237,7 +238,8 @@ LogicalType GetListConcatType(ResolveReturnTypeInput &input) {
 			                      "Cannot concatenate types %s - an explicit cast is required", type_list);
 		}
 		}
-		if (!LogicalType::TryGetMaxLogicalType(context, child_type, next_type, child_type)) {
+		if (!LogicalType::TryGetMaxLogicalType(context, child_type, next_type, child_type,
+		                                       input.GetDecimalWidthLimit())) {
 			throw BinderException(input.GetArgumentLocation(i),
 			                      "Cannot concatenate lists of types %s[] and %s[] - an explicit cast is required",
 			                      child_type.ToString(), next_type.ToString());

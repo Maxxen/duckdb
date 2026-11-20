@@ -45,6 +45,10 @@ static int64_t TargetTypeCost(const LogicalType &type) {
 		return 161;
 	case LogicalTypeId::ANY:
 		return 5;
+	case LogicalTypeId::GEOGRAPHY:
+		// Cost slightly higher than GEOMETRY (default) so that untyped NULL/literal arguments prefer the
+		// GEOMETRY overload of functions overloaded on both, instead of being ambiguous.
+		return 111;
 	default:
 		return 110;
 	}
@@ -412,6 +416,11 @@ int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) 
 		}
 		if (to.id() == LogicalTypeId::VARCHAR && to.GetAlias().empty()) {
 			return 1;
+		}
+		if (to.id() == LogicalTypeId::GEOGRAPHY) {
+			// Prefer GEOMETRY over GEOGRAPHY for untyped string literals (see TargetTypeCost), so functions
+			// overloaded on both resolve unambiguously.
+			return 21;
 		}
 		return 20;
 	}
