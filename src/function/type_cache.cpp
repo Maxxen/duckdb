@@ -3,6 +3,7 @@
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/type_catalog_entry.hpp"
 #include "duckdb/catalog/default/default_types.hpp"
+#include "duckdb/common/types/hash.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/parser/qualified_name.hpp"
 
@@ -26,11 +27,37 @@ static bool IsSameArgument(const TypeArgument &left, const TypeArgument &right) 
 	return Value::NotDistinctFrom(left_value, right_value);
 }
 
+//! Hashes are combined in order, so that a type does not hash like the types it is made of
+static hash_t CombineOrdered(hash_t hash, hash_t next) {
+	return Hash<uint64_t>(hash ^ next);
+}
+
+static hash_t HashArgument(const TypeArgument &argument) {
+	auto &name = argument.GetName();
+	auto &value = argument.GetValue();
+	auto hash = Hash(name.c_str(), name.size());
+	if (value.IsNull()) {
+		return hash;
+	}
+	if (value.type().id() == LogicalTypeId::TYPE) {
+		return CombineOrdered(hash, TypeValue::GetType(value).Hash());
+	}
+	if (value.type().IsIntegral() && value.type().id() != LogicalTypeId::HUGEINT &&
+	    value.type().id() != LogicalTypeId::UHUGEINT && value.type().id() != LogicalTypeId::UBIGINT) {
+		return CombineOrdered(hash, Hash<int64_t>(value.GetValue<int64_t>()));
+	}
+	return CombineOrdered(hash, Hash<uint8_t>(static_cast<uint8_t>(value.type().id())));
+}
+
 LogicalType TypeCache::Construct(const Identifier &name, vector<TypeArgument> arguments) {
-	auto constructed = entries.find(name);
+	hash_t hash = name.Hash();
+	for (auto &argument : arguments) {
+		hash = CombineOrdered(hash, HashArgument(argument));
+	}
+	auto constructed = entries.find(hash);
 	if (constructed != entries.end()) {
 		for (auto &entry : constructed->second) {
-			if (entry.arguments.size() != arguments.size()) {
+			if (!(entry.name == name) || entry.arguments.size() != arguments.size()) {
 				continue;
 			}
 			bool same_arguments = true;
@@ -58,7 +85,7 @@ LogicalType TypeCache::Construct(const Identifier &name, vector<TypeArgument> ar
 		type = DefaultTypeGenerator::TryDefaultBind(name.GetIdentifierName(), parameters);
 	}
 	if (type.id() != LogicalTypeId::INVALID) {
-		entries[name].push_back(Entry {std::move(arguments), type});
+		entries[hash].push_back(Entry {name, std::move(arguments), type});
 	}
 	return type;
 }

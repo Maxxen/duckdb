@@ -30,6 +30,7 @@ public:
 
 protected:
 	bool EqualsInternal(const LogicalTypeInfo *other_p) const override;
+	hash_t HashInternal() const override;
 
 private:
 	DecimalTypeInfo();
@@ -64,6 +65,7 @@ public:
 
 protected:
 	bool EqualsInternal(const LogicalTypeInfo *other_p) const override;
+	hash_t HashInternal() const override;
 
 private:
 	ListTypeInfo();
@@ -81,6 +83,7 @@ public:
 
 protected:
 	bool EqualsInternal(const LogicalTypeInfo *other_p) const override;
+	hash_t HashInternal() const override;
 
 private:
 	StructTypeInfo();
@@ -128,6 +131,7 @@ public:
 protected:
 	// Equalities are only used in enums with different catalog entries
 	bool EqualsInternal(const LogicalTypeInfo *other_p) const override;
+	hash_t HashInternal() const override;
 
 	Vector values_insert_order;
 
@@ -148,6 +152,7 @@ public:
 
 protected:
 	bool EqualsInternal(const LogicalTypeInfo *other_p) const override;
+	hash_t HashInternal() const override;
 };
 
 struct AnyTypeInfo : public LogicalTypeInfo {

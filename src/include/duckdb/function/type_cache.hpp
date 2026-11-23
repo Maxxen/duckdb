@@ -11,6 +11,7 @@
 #include "duckdb/common/identifier.hpp"
 #include "duckdb/common/optional_ptr.hpp"
 #include "duckdb/common/types.hpp"
+#include "duckdb/common/unordered_map.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/function/type_constructor.hpp"
 
@@ -33,14 +34,15 @@ public:
 
 private:
 	struct Entry {
+		Identifier name;
 		vector<TypeArgument> arguments;
 		LogicalType type;
 	};
 
 private:
 	optional_ptr<ClientContext> context;
-	//! The constructed types, by the name of their constructor
-	identifier_map_t<vector<Entry>> entries;
+	//! The constructed types, by the hash of the name and the arguments of their constructor
+	unordered_map<hash_t, vector<Entry>> entries;
 };
 
 } // namespace duckdb

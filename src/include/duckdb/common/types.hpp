@@ -295,6 +295,8 @@ private:
 	PhysicalType physical_type = PhysicalType::INVALID;
 	//! Immortal infos (e.g. the one behind LogicalType::INTEGER) are shared without ref-counting and never freed.
 	bool immortal = false;
+	//! The hash of what Equals compares - set when a LogicalType adopts the info
+	hash_t hash = 0;
 
 public:
 	string alias;
@@ -329,6 +331,10 @@ public:
 	}
 
 	bool Equals(const LogicalTypeInfo &other) const;
+	//! A hash of what Equals compares: equal infos of the same type id hash the same
+	inline hash_t Hash() const {
+		return hash;
+	}
 
 	virtual void Serialize(Serializer &serializer) const;
 	static unique_ptr<LogicalTypeInfo> Deserialize(Deserializer &source);
@@ -351,6 +357,11 @@ public:
 
 protected:
 	virtual bool EqualsInternal(const LogicalTypeInfo *other_p) const;
+	//! A hash of what EqualsInternal compares
+	virtual hash_t HashInternal() const;
+
+private:
+	hash_t ComputeHash() const;
 };
 
 struct LogicalType {

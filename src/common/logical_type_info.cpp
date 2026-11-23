@@ -131,6 +131,27 @@ bool LogicalTypeInfo::EqualsInternal(const LogicalTypeInfo *other_p) const {
 	return true;
 }
 
+//! Hashes are combined in order, so that a type does not hash like the types it is made of
+static hash_t CombineOrdered(hash_t hash, hash_t next) {
+	return duckdb::Hash<uint64_t>(hash ^ next);
+}
+
+hash_t LogicalTypeInfo::ComputeHash() const {
+	auto result = duckdb::Hash<uint8_t>(static_cast<uint8_t>(id));
+	if (!alias.empty()) {
+		result = CombineOrdered(result, duckdb::Hash(alias.c_str(), alias.size()));
+	}
+	if (!HasNoEqualityParameters(type)) {
+		result = CombineOrdered(result, duckdb::Hash<uint8_t>(static_cast<uint8_t>(type)));
+		result = CombineOrdered(result, HashInternal());
+	}
+	return result;
+}
+
+hash_t LogicalTypeInfo::HashInternal() const {
+	return 0;
+}
+
 //===--------------------------------------------------------------------===//
 // Decimal Type Info
 //===--------------------------------------------------------------------===//
@@ -145,6 +166,10 @@ DecimalTypeInfo::DecimalTypeInfo(uint32_t width_p, uint32_t scale_p)
 bool DecimalTypeInfo::EqualsInternal(const LogicalTypeInfo *other_p) const {
 	auto &other = other_p->Cast<DecimalTypeInfo>();
 	return width == other.width && scale == other.scale;
+}
+
+hash_t DecimalTypeInfo::HashInternal() const {
+	return CombineOrdered(duckdb::Hash<uint32_t>(width), duckdb::Hash<uint32_t>(scale));
 }
 
 unique_ptr<LogicalTypeInfo> DecimalTypeInfo::Copy() const {
@@ -185,6 +210,10 @@ bool ListTypeInfo::EqualsInternal(const LogicalTypeInfo *other_p) const {
 	return child_type == other.child_type;
 }
 
+hash_t ListTypeInfo::HashInternal() const {
+	return child_type.Hash();
+}
+
 unique_ptr<LogicalTypeInfo> ListTypeInfo::Copy() const {
 	return make_uniq<ListTypeInfo>(*this);
 }
@@ -202,6 +231,15 @@ StructTypeInfo::StructTypeInfo(child_list_t<LogicalType> child_types_p)
 bool StructTypeInfo::EqualsInternal(const LogicalTypeInfo *other_p) const {
 	auto &other = other_p->Cast<StructTypeInfo>();
 	return child_types == other.child_types;
+}
+
+hash_t StructTypeInfo::HashInternal() const {
+	auto result = duckdb::Hash<uint64_t>(child_types.size());
+	for (auto &child : child_types) {
+		result = CombineOrdered(result, child.first.Hash());
+		result = CombineOrdered(result, child.second.Hash());
+	}
+	return result;
 }
 
 unique_ptr<LogicalTypeInfo> StructTypeInfo::Copy() const {
@@ -447,6 +485,10 @@ bool EnumTypeInfo::EqualsInternal(const LogicalTypeInfo *other_p) const {
 	return true;
 }
 
+hash_t EnumTypeInfo::HashInternal() const {
+	return duckdb::Hash<uint64_t>(dict_size);
+}
+
 void EnumTypeInfo::Serialize(Serializer &serializer) const {
 	LogicalTypeInfo::Serialize(serializer);
 
@@ -475,6 +517,10 @@ ArrayTypeInfo::ArrayTypeInfo(LogicalType child_type_p, uint32_t size_p)
 bool ArrayTypeInfo::EqualsInternal(const LogicalTypeInfo *other_p) const {
 	auto &other = other_p->Cast<ArrayTypeInfo>();
 	return child_type == other.child_type && size == other.size;
+}
+
+hash_t ArrayTypeInfo::HashInternal() const {
+	return CombineOrdered(child_type.Hash(), duckdb::Hash<uint32_t>(size));
 }
 
 unique_ptr<LogicalTypeInfo> ArrayTypeInfo::Copy() const {

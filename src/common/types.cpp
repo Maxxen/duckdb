@@ -206,6 +206,7 @@ const LogicalTypeInfo *LogicalType::TryGetBuiltinTypeInfo(LogicalTypeId id) noex
 			if (TryGetBuiltinPhysicalType(builtin_id, info.physical_type)) {
 				info.id = builtin_id;
 				info.immortal = true;
+				info.hash = info.ComputeHash();
 				result.infos[i] = &info;
 			}
 		}
@@ -258,6 +259,7 @@ const LogicalTypeInfo &LogicalType::AdoptNewTypeInfo(LogicalTypeId id, unique_pt
 		throw InternalException("Invalid LogicalType %d", static_cast<uint8_t>(id));
 	}
 	type_info->id = id;
+	type_info->hash = type_info->ComputeHash();
 	type_info->ref_count = 1;
 	return *type_info.release();
 }
@@ -289,7 +291,7 @@ LogicalType LogicalType::CreateImmortal(LogicalTypeId id, unique_ptr<LogicalType
 }
 
 hash_t LogicalType::Hash() const {
-	return duckdb::Hash<uint8_t>((uint8_t)id());
+	return type_info_.get().Hash();
 }
 
 bool LogicalType::HasParameters() const {
@@ -2320,6 +2322,9 @@ bool LogicalType::EqualTypeInfo(const LogicalType &rhs) const {
 }
 
 bool LogicalType::EqualsIncludingCollation(const LogicalType &rhs) const {
+	if (RefersToSameObject(type_info_, rhs.type_info_)) {
+		return true;
+	}
 	if (*this != rhs) {
 		return false;
 	}
@@ -2350,6 +2355,11 @@ bool LogicalType::operator==(const LogicalType &rhs) const {
 		return true;
 	}
 	if (id() != rhs.id()) {
+		return false;
+	}
+	// equal types hash the same
+	D_ASSERT(Hash() == rhs.Hash() || !EqualTypeInfo(rhs));
+	if (Hash() != rhs.Hash()) {
 		return false;
 	}
 	return EqualTypeInfo(rhs);

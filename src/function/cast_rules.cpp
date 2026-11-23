@@ -550,7 +550,8 @@ int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) 
 
 		auto target_is_unnamed = StructType::IsUnnamed(to);
 		auto source_is_unnamed = StructType::IsUnnamed(from);
-		auto named_struct_cast = !source_is_unnamed && !target_is_unnamed;
+		// the members of the same struct type match by position, there is no need to look them up by name
+		auto named_struct_cast = !source_is_unnamed && !target_is_unnamed && from != to;
 
 		int64_t cost = -1;
 		if (named_struct_cast) {
