@@ -212,7 +212,6 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().parameter_types[0] == LogicalType::BIGINT);
 		REQUIRE(selection.GetBinding().return_type == LogicalType::ARRAY(LogicalType::DOUBLE, 3));
-		REQUIRE(selection.GetBinding().variable_values.at("N") == Value::BIGINT(3));
 
 		// any constant expression does, an argument that is not constant does not match
 		vector<unique_ptr<Expression>> arguments;
@@ -240,8 +239,6 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().parameter_types[0] == bigint_array);
 		REQUIRE(selection.GetBinding().return_type == bigint_array);
-		REQUIRE(selection.GetBinding().variable_types.at("T") == LogicalType::BIGINT);
-		REQUIRE(selection.GetBinding().variable_values.at("N") == Value::BIGINT(3));
 
 		// arguments that determine different values do not match the overload
 		selection = FunctionBinder::SelectFunction(*con.context, same,
@@ -255,10 +252,9 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		// an argument that says nothing leaves the value to the other arguments, or unknown: an array of any size
 		selection = FunctionBinder::SelectFunction(*con.context, same, {LogicalType::SQLNULL, int_array});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variable_values.at("N") == Value::BIGINT(3));
+		REQUIRE(ArrayType::GetSize(selection.GetBinding().return_type) == 3);
 		selection = FunctionBinder::SelectFunction(*con.context, same, {LogicalType::SQLNULL, LogicalType::SQLNULL});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variable_values.at("N").IsNull());
 		REQUIRE(ArrayType::IsAnySize(selection.GetBinding().parameter_types[0]));
 
 		// rescaled<W: INTEGER, S: INTEGER>(x DECIMAL(W, S)) -> DECIMAL(W, S): also of the decimal a number is passed as
@@ -392,7 +388,6 @@ TEST_CASE("Of the overloads that match at the same cost the most specific one is
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
 		REQUIRE(selection.GetBinding().parameter_types[0] == geometry_crs);
-		REQUIRE(selection.GetBinding().variable_values.at("C") == Value("OGC:CRS84"));
 
 		// one without does not determine the variable
 		selection = FunctionBinder::SelectFunction(*con.context, crs, {LogicalType::GEOMETRY()});

@@ -253,6 +253,20 @@ static Value BindValuePattern(const Identifier &) {
 	return Value();
 }
 
+//! The type an argument is passed as to a parameter that is declared with ANY: ANY stands for the type of the
+//! argument, each time it occurs
+static LogicalType SubstituteAny(const LogicalType &parameter_type, const LogicalType &argument_type) {
+	if (parameter_type.id() == LogicalTypeId::LIST &&
+	    (argument_type.id() == LogicalTypeId::LIST || argument_type.id() == LogicalTypeId::ARRAY)) {
+		auto &argument_child = argument_type.id() == LogicalTypeId::LIST ? ListType::GetChildType(argument_type)
+		                                                                 : ArrayType::GetChildType(argument_type);
+		return LogicalType::LIST(SubstituteAny(ListType::GetChildType(parameter_type), argument_child));
+	}
+	// ANY itself, or an argument that is not of the shape the parameter declares: it is passed as it is. An unresolved
+	// parameter stays unknown
+	return argument_type.id() == LogicalTypeId::UNKNOWN ? argument_type : LogicalType::NormalizeType(argument_type);
+}
+
 //! The type a call determines a type variable to be
 static LogicalType GetVariableType(const Identifier &variable, LogicalTypeId constraint,
                                    const FunctionVariables &variables) {
@@ -1052,19 +1066,54 @@ FunctionBinder::MatchOverload(TypeCache &cache, idx_t overload, shared_ptr<const
 		}
 	}
 	binding.return_type = BindReturnType(cache, sig, variables);
-	for (auto &variable : sig.GetVariables()) {
-		auto &variable_name = variable.GetName().GetIdentifierName();
-		if (variable.IsValue()) {
-			auto entry = variables.values.find(variable_name);
-			if (entry != variables.values.end()) {
-				binding.variable_values[variable_name] = entry->second;
-			}
-		} else if (variables.types.find(variable_name) != variables.types.end()) {
-			binding.variable_types[variable_name] =
-			    GetVariableType(variable.GetName(), sig.GetConstraint(variable.GetName()), variables);
+	binding.parameter_types = std::move(parameter_types);
+
+	// The arguments the function is bound with are ordered by the parameter that receives them
+	const auto parameter_count = sig.GetParameterCount();
+	vector<idx_t> offsets(parameter_count + 1, 0);
+	for (auto param_idx : binding.argument_to_parameters) {
+		offsets[param_idx + 1]++;
+	}
+	for (idx_t param_idx = 0; param_idx < parameter_count; param_idx++) {
+		if (offsets[param_idx + 1] == 0 && !sig.GetParameter(param_idx).IsVariadic()) {
+			// the call matches the function, so every parameter it leaves out has a default
+			offsets[param_idx + 1] = 1;
+		}
+		offsets[param_idx + 1] += offsets[param_idx];
+	}
+	binding.argument_types.resize(offsets[parameter_count]);
+	vector<bool> received(parameter_count, false);
+	for (idx_t i = 0; i < received_count; i++) {
+		auto param_idx = binding.argument_to_parameters[i];
+		auto &parameter_type = binding.parameter_types[param_idx];
+		received[param_idx] = true;
+		// a parameter that uses a variable is bound to what the arguments determine, the others still read as declared
+		const bool uses_variable = has_variables && variable_uses[param_idx].UsesAny();
+		const bool has_any = !uses_variable && TypeVisitor::Contains(parameter_type, LogicalTypeId::ANY);
+		auto &argument_type = call.GetArgument(i).type;
+		// a NULL or an unresolved parameter says nothing about its type: where nothing else determines the type of
+		// the parameter (e.g. the width of a DECIMAL), the argument is passed as it is
+		const bool is_untyped =
+		    argument_type.id() == LogicalTypeId::SQLNULL || argument_type.id() == LogicalTypeId::UNKNOWN;
+		if (has_any) {
+			binding.argument_types[offsets[param_idx]++] = SubstituteAny(parameter_type, argument_type);
+		} else if (is_untyped && !parameter_type.IsComplete()) {
+			binding.argument_types[offsets[param_idx]++] = argument_type;
+		} else {
+			binding.argument_types[offsets[param_idx]++] = parameter_type;
 		}
 	}
-	binding.parameter_types = std::move(parameter_types);
+	for (idx_t param_idx = 0; param_idx < parameter_count; param_idx++) {
+		auto &param = sig.GetParameter(param_idx);
+		if (received[param_idx] || param.IsVariadic()) {
+			continue;
+		}
+		auto &parameter_type = binding.parameter_types[param_idx];
+		binding.argument_types[offsets[param_idx]] =
+		    TypeVisitor::Contains(parameter_type, LogicalTypeId::ANY)
+		        ? SubstituteAny(parameter_type, param.GetDefaultValue()->type())
+		        : parameter_type;
+	}
 
 	// all arguments are implicitly castable - with a parameter of an unknown type, the cost is 0
 	binding.cost = has_unknown_argument ? 0 : cost;
@@ -1160,27 +1209,9 @@ FunctionBinding FunctionBinder::MatchFunction(optional_ptr<ClientContext> contex
 	return std::move(*binding);
 }
 
-vector<LogicalType> FunctionBinding::GetArgumentTypes() const {
-	auto &sig = function->GetSignature();
-	vector<idx_t> received(sig.GetParameterCount(), 0);
-	for (auto param_idx : argument_to_parameters) {
-		received[param_idx]++;
-	}
-	vector<LogicalType> result;
-	for (idx_t param_idx = 0; param_idx < sig.GetParameterCount(); param_idx++) {
-		auto count = received[param_idx];
-		if (count == 0 && !sig.GetParameter(param_idx).IsVariadic()) {
-			// the call matches the function, so every parameter it leaves out has a default
-			count = 1;
-		}
-		result.insert(result.end(), count, parameter_types[param_idx]);
-	}
-	return result;
-}
-
 template <class BOUND, class T>
 BOUND FunctionBinder::CreateBoundFunction(const FunctionBinding &binding) {
-	return BOUND(binding.GetFunction<T>(), binding.GetArgumentTypes(), binding.return_type);
+	return BOUND(binding.GetFunction<T>(), binding.argument_types, binding.return_type);
 }
 
 BoundScalarFunction FunctionBinder::BindScalarFunction(optional_ptr<ClientContext> context,
@@ -1511,7 +1542,7 @@ static ResolvedArguments ResolveArguments(const SimpleFunction &function, const 
 			result.named_argument_names.push_back(param.GetName());
 		}
 	}
-	result.types = binding.GetArgumentTypes();
+	result.types = binding.argument_types;
 	for (auto &type : result.types) {
 		if (TypeVisitor::Contains(type, LogicalTypeId::UNKNOWN)) {
 			// no argument determines the type of an unresolved parameter - the call is bound again at EXECUTE
@@ -1867,10 +1898,9 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunctionCa
 				return make_uniq<BoundConstantExpression>(Value(null_function.GetReturnType()), std::move(alias),
 				                                          query_location);
 			}
-			auto resolved = ResolveScalarFunctionTypes(binding, regular_args, keyword_args);
-			PropagateReturnCollation(resolved.bound_function, resolved.bound_function.GetProperties(), regular_args,
-			                         resolved.pushed_collation);
-			return make_uniq<BoundConstantExpression>(Value(NullReturnType(resolved.bound_function.GetReturnType())),
+			// the return type follows from the arguments: resolve it without invoking the bind callback
+			auto resolved = ResolveScalarFunction(binding, regular_args, keyword_args, false);
+			return make_uniq<BoundConstantExpression>(Value(NullReturnType(resolved.first.GetReturnType())),
 			                                          std::move(alias), query_location);
 		}
 	}
@@ -2154,13 +2184,19 @@ static void ResolveReturnType(ClientContext &context, const SimpleFunction &func
 	bound_function.SetReturnType(resolver(input));
 }
 
-ResolvedScalarFunctionTypes
-FunctionBinder::ResolveScalarFunctionTypes(const FunctionBinding &binding, vector<unique_ptr<Expression>> &arguments,
-                                           vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
+pair<BoundScalarFunction, unique_ptr<FunctionData>>
+FunctionBinder::ResolveScalarFunction(const FunctionBinding &binding, vector<unique_ptr<Expression>> &arguments,
+                                      vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
+	return ResolveScalarFunction(binding, arguments, named_arguments, true);
+}
+
+pair<BoundScalarFunction, unique_ptr<FunctionData>>
+FunctionBinder::ResolveScalarFunction(const FunctionBinding &binding, vector<unique_ptr<Expression>> &arguments,
+                                      vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments,
+                                      bool invoke_bind) {
 	auto &function = binding.GetFunction();
 	// Make a BoundScalarFunction out of the ScalarFunction, so we can store bind info and other properties in it.
-	ResolvedScalarFunctionTypes result {CreateBoundFunction<BoundScalarFunction, ScalarFunction>(binding), {}};
-	auto &bound_function = result.bound_function;
+	auto bound_function = CreateBoundFunction<BoundScalarFunction, ScalarFunction>(binding);
 
 	// Reorder named args and expand the variadic arguments
 	auto resolved = ResolveArguments(function, binding, arguments, named_arguments);
@@ -2170,45 +2206,39 @@ FunctionBinder::ResolveScalarFunctionTypes(const FunctionBinding &binding, vecto
 	bound_function.SetLogicalArguments(CaptureLogicalArguments(bound_function, arguments));
 	ResolveIncompleteArgumentTypes(bound_function, arguments);
 
+	// The resolver and the bind callback are called with arguments that are cast to the argument types of the function
 	const bool is_index_key = arguments_collated || (binder && binder->IsBindingIndexKey());
-	result.pushed_collation =
+	auto pushed_collation =
 	    PushArgumentCollations(context, bound_function, bound_function.GetProperties(), arguments, is_index_key);
 	CastToFunctionArguments(bound_function.GetName(), bound_function.GetArguments(), arguments);
 	ResolveReturnType(context, function, bound_function, arguments, binder, decimal_width_limit);
-	return result;
-}
 
-pair<BoundScalarFunction, unique_ptr<FunctionData>>
-FunctionBinder::ResolveScalarFunction(const FunctionBinding &binding, vector<unique_ptr<Expression>> &arguments,
-                                      vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
-	auto resolved = ResolveScalarFunctionTypes(binding, arguments, named_arguments);
-	auto &bound_function = resolved.bound_function;
-
-	// The bind callback is called with arguments that are cast to the argument types of the bound function
 	unique_ptr<FunctionData> bind_info;
-	if (binder && (bound_function.HasBindCallback() || bound_function.HasBindExpressionCallback())) {
-		// the callbacks can evaluate constant arguments and drop them, which hides casts that read settings
-		for (auto &argument : arguments) {
-			if (argument->IsFoldable() && argument->RequiresRebind()) {
-				binder->SetAlwaysRequireRebind();
-				break;
+	if (invoke_bind) {
+		if (binder && (bound_function.HasBindCallback() || bound_function.HasBindExpressionCallback())) {
+			// the callbacks can evaluate constant arguments and drop them, which hides casts that read settings
+			for (auto &argument : arguments) {
+				if (argument->IsFoldable() && argument->RequiresRebind()) {
+					binder->SetAlwaysRequireRebind();
+					break;
+				}
 			}
 		}
-	}
-	if (bound_function.HasBindCallback()) {
-		BindScalarFunctionInput input(context, bound_function, arguments, binder, decimal_width_limit);
-		bind_info = bound_function.GetBindCallback()(input);
-		VerifyArgumentCount(bound_function, arguments.size());
-		VerifyBindArgumentTypes(bound_function, arguments);
+		if (bound_function.HasBindCallback()) {
+			BindScalarFunctionInput input(context, bound_function, arguments, binder, decimal_width_limit);
+			bind_info = bound_function.GetBindCallback()(input);
+			VerifyArgumentCount(bound_function, arguments.size());
+			VerifyBindArgumentTypes(bound_function, arguments);
+		}
+
+		if (bound_function.HasModifiedDatabasesCallback() && binder) {
+			auto &properties = binder->GetStatementProperties();
+			FunctionModifiedDatabasesInput input(bind_info.get(), properties);
+			bound_function.GetModifiedDatabasesCallback()(context, input);
+		}
 	}
 
-	if (bound_function.HasModifiedDatabasesCallback() && binder) {
-		auto &properties = binder->GetStatementProperties();
-		FunctionModifiedDatabasesInput input(bind_info.get(), properties);
-		bound_function.GetModifiedDatabasesCallback()(context, input);
-	}
-
-	PropagateReturnCollation(bound_function, bound_function.GetProperties(), arguments, resolved.pushed_collation);
+	PropagateReturnCollation(bound_function, bound_function.GetProperties(), arguments, pushed_collation);
 	bound_function.SetLogicalReturnType(bound_function.GetReturnType());
 
 	return {std::move(bound_function), std::move(bind_info)};

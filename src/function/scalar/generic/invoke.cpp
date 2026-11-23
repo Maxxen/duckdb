@@ -130,6 +130,10 @@ unique_ptr<FunctionData> LambdaInvokeBind(BindScalarFunctionInput &input) {
 		                      bound_lambda_expr.ParameterCount(), arguments.size() - 1);
 	}
 
+	if (bound_lambda_expr.LambdaExpr()->GetReturnType().id() == LogicalTypeId::UNKNOWN) {
+		// the lambda returns an unresolved parameter - the call is bound again at EXECUTE
+		throw ParameterNotResolvedException();
+	}
 	bound_function.SetReturnType(bound_lambda_expr.LambdaExpr()->GetReturnType());
 	PropagateLambdaProperties(bound_function, *bound_lambda_expr.LambdaExpr());
 

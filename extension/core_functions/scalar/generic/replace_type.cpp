@@ -8,6 +8,14 @@ static void ReplaceTypeFunction(DataChunk &, ExpressionState &, Vector &) {
 	throw InternalException("ReplaceTypeFunction function cannot be executed directly");
 }
 
+//! The type of the first argument, with the second type replaced by the third wherever it occurs
+static LogicalType ReplaceTypeReturnType(const ResolveReturnTypeInput &input) {
+	const auto &from = input.GetArgumentType(1);
+	const auto &to = input.GetArgumentType(2);
+	return TypeVisitor::VisitReplace(input.GetArgumentType(0),
+	                                 [&from, &to](const LogicalType &type) { return type == from ? to : type; });
+}
+
 static unique_ptr<Expression> BindReplaceTypeFunction(FunctionBindExpressionInput &input) {
 	const auto &from = input.children[1]->GetReturnType();
 	const auto &to = input.children[2]->GetReturnType();
@@ -31,9 +39,11 @@ ScalarFunction ReplaceTypeFun::GetFunction() {
 	                              .AddParameter("param", TypeName::VARIABLE("T"))
 	                              .AddParameter("type1", TypeName::VARIABLE("U"))
 	                              .AddParameter("type2", TypeName::VARIABLE("V"))
-	                              .SetReturnType(ReturnType::ANY()),
+	                              .SetReturnType(ReturnType::ANY(ReplaceTypeReturnType)),
 	                          ReplaceTypeFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
+	// the result has the type the arguments determine as it is, the collations of the arguments are not combined
+	fun.SetCollationHandling(FunctionCollationHandling::IGNORE_COLLATIONS);
 	fun.SetBindExpressionCallback(BindReplaceTypeFunction);
 	return fun;
 }

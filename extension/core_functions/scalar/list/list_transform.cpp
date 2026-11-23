@@ -22,6 +22,10 @@ static unique_ptr<FunctionData> ListTransformBind(BindScalarFunctionInput &input
 	arguments[0] = BoundCastExpression::AddArrayCastToList(context, std::move(arguments[0]));
 
 	auto &bound_lambda_expr = arguments[1]->Cast<BoundLambdaExpression>();
+	if (bound_lambda_expr.LambdaExpr()->GetReturnType().id() == LogicalTypeId::UNKNOWN) {
+		// the lambda returns an unresolved parameter - the call is bound again at EXECUTE
+		throw ParameterNotResolvedException();
+	}
 	bound_function.SetReturnType(LogicalType::LIST(bound_lambda_expr.LambdaExpr()->GetReturnType()));
 	auto has_index = bound_lambda_expr.ParameterCount() == 2;
 	return LambdaFunctions::ListLambdaBind(context, bound_function, arguments, has_index);

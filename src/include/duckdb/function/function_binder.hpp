@@ -35,13 +35,6 @@ struct SortedAggregateStateOrder {
 	OrderByNullType null_order;
 };
 
-//! A scalar function with its argument and return types resolved, before the bind callback is invoked
-struct ResolvedScalarFunctionTypes {
-	BoundScalarFunction bound_function;
-	//! The collation pushed into the arguments, to be propagated to the return type after binding
-	string pushed_collation;
-};
-
 //! A table function bound to the constants it is called with, before its bind callback is invoked
 struct ResolvedTableFunction {
 	explicit ResolvedTableFunction(BoundTableFunction function_p, vector<Value> parameters_p = {},
@@ -89,9 +82,6 @@ struct FunctionBinding {
 		return shared_ptr_cast<const SimpleFunction, const T>(function);
 	}
 
-	//! The type of every argument the function is bound with, in the order of its parameters: an argument of "*args"
-	//! or "**kwargs" has the type of that parameter, a parameter the call leaves out is filled by its default
-	DUCKDB_API vector<LogicalType> GetArgumentTypes() const;
 
 	//! The cost of casting the arguments to the parameters of the overload
 	idx_t cost = 0;
@@ -101,12 +91,12 @@ struct FunctionBinding {
 	//! The type of every parameter of the overload, with the templates the arguments and defaults determine
 	//! substituted
 	vector<LogicalType> parameter_types;
+	//! The type of every argument the function is bound with, in the order of its parameters: an argument has the
+	//! type of the parameter that receives it, where ANY stands for the type of the argument itself. A parameter the
+	//! call leaves out is filled by its default
+	vector<LogicalType> argument_types;
 	//! The return type of the overload, with the templates substituted
 	LogicalType return_type;
-	//! What the call determines the variables of the overload to be: the type of every type variable, and the
-	//! value of every value variable
-	case_insensitive_map_t<LogicalType> variable_types;
-	case_insensitive_map_t<Value> variable_values;
 
 private:
 	friend class FunctionBinder;
@@ -665,11 +655,10 @@ public:
 	                      optional_ptr<vector<LogicalType>> arg_order_types = nullptr);
 
 private:
-	//! Resolves the argument / return types of the function and casts the children to them - everything that happens
-	//! before the bind callback is invoked
-	ResolvedScalarFunctionTypes
-	ResolveScalarFunctionTypes(const FunctionBinding &binding, vector<unique_ptr<Expression>> &children,
-	                           vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args);
+	//! The same, the bind callback is only invoked if asked for: without it only the types are resolved
+	pair<BoundScalarFunction, unique_ptr<FunctionData>>
+	ResolveScalarFunction(const FunctionBinding &binding, vector<unique_ptr<Expression>> &children,
+	                      vector<pair<Identifier, unique_ptr<Expression>>> &keyword_args, bool invoke_bind);
 
 	unique_ptr<Expression> BindScalarFunction(const FunctionBinding &binding, vector<unique_ptr<Expression>> children,
 	                                          vector<pair<Identifier, unique_ptr<Expression>>> keyword_args,

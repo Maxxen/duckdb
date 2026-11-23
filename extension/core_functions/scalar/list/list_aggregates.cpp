@@ -562,6 +562,8 @@ unique_ptr<FunctionData> ListAggregatesBind(BindScalarFunctionInput &input) {
 	if (extra_argument_count + 2 == bound_function.GetLogicalArguments().size()) {
 		for (idx_t child_idx = 1; child_idx <= extra_argument_count && child_idx < aggr_children.size(); child_idx++) {
 			arguments.push_back(aggr_children[child_idx]->Copy());
+			// the function receives an extra argument as what the aggregate takes it as
+			bound_function.GetArguments()[child_idx + 1] = arguments.back()->GetReturnType();
 		}
 	}
 

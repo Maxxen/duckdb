@@ -29,9 +29,11 @@ ScalarFunction CastToTypeFun::GetFunction() {
 	                              .AddVariable("U")
 	                              .AddParameter("param", TypeName::VARIABLE("T"))
 	                              .AddParameter("type", TypeName::VARIABLE("U"))
-	                              .SetReturnType(ReturnType::ANY()),
+	                              .SetReturnType(TypeName::VARIABLE("U")),
 	                          CastToTypeFunction);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
+	// the result has the type of the second argument as it is, the collations of the arguments are not combined
+	fun.SetCollationHandling(FunctionCollationHandling::IGNORE_COLLATIONS);
 	fun.SetBindExpressionCallback(BindCastToTypeFunction);
 	return fun;
 }
