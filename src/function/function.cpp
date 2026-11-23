@@ -347,6 +347,26 @@ bool FunctionSignature::AcceptsAnyType(const TypeName &type) const {
 	return variable && !variable->IsValue() && GetConstraint(type.GetName()) == LogicalTypeId::INVALID;
 }
 
+//! Whether a type name uses a variable of the signature, or ANY
+static bool UsesVariable(const FunctionSignature &signature, const TypeName &type) {
+	if (type.IsBuiltinType(LogicalTypeId::ANY)) {
+		return true;
+	}
+	if (!type.HasArguments()) {
+		return signature.FindVariable(type.GetName()) != nullptr;
+	}
+	for (auto &argument : type.GetArguments()) {
+		if (argument.IsType() && UsesVariable(signature, argument.GetType())) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool FunctionSignature::HasCompleteReturnType() const {
+	return return_type.IsType() && !UsesVariable(*this, return_type.GetTypeName());
+}
+
 //! The constraints a signature declares on the type variables a type uses
 static void CollectConstraints(const FunctionSignature &signature, const TypeName &type,
                                vector<LogicalTypeId> &constraints) {

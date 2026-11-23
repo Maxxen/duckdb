@@ -516,6 +516,9 @@ public:
 	DUCKDB_API auto AddConstraint(Identifier variable, LogicalTypeId kind) -> FunctionSignature &;
 	//! Whether a type of this signature takes an argument of any type as it is: ANY, or an unconstrained type variable
 	DUCKDB_API bool AcceptsAnyType(const TypeName &type) const;
+	//! Whether the signature declares a return type that is complete as it is: a type that uses none of the variables
+	//! of the signature and no ANY, so that it is the same for every call
+	DUCKDB_API bool HasCompleteReturnType() const;
 	//! Whether a type of this signature and a type of another one declare the same type
 	DUCKDB_API bool IsSameType(const TypeName &type, const FunctionSignature &other, const TypeName &other_type) const;
 

@@ -189,7 +189,7 @@ public:
 			auto match =
 			    FunctionBinder::MatchOverload(cache, offset, functions.GetSharedOverload(offset), {call_types}, false);
 			auto binding = std::get_if<FunctionBinding>(&match);
-			if (!binding || binding->return_type.id() != return_type.id()) {
+			if (!binding || FunctionBinder::BindReturnType(cache, *binding).id() != return_type.id()) {
 				continue;
 			}
 			// the plan recorded the types the function was bound to, so they are not cast
@@ -536,7 +536,9 @@ public:
 
 		// Otherwise, construct the bound function from its parts
 		// the type the signature returns for the recorded arguments - ANY if only the function itself knows it
-		FUNC bound_function(function, std::move(arguments), binding->return_type);
+		TypeCache cache(&context);
+		const auto declared_return_type = FunctionBinder::BindReturnType(cache, *binding);
+		FUNC bound_function(function, std::move(arguments), declared_return_type);
 
 		bound_function.SetNamedArguments(positional_count, std::move(named_arguments));
 		RestoreLogicalSignature(bound_function, children, return_type);
@@ -555,8 +557,8 @@ public:
 		// A return type that is declared in terms of the arguments is taken from the plan, unless the deserialize
 		// callback set it: no bind derived it from these arguments, whose recorded types can differ from the call's
 		const bool follows_from_arguments =
-		    !FunctionBinder::BindReturnPattern(&context, function->GetSignature()).IsComplete() &&
-		    bound_function.GetReturnType() == binding->return_type;
+		    !function->GetSignature().HasCompleteReturnType() &&
+		    bound_function.GetReturnType() == declared_return_type;
 		if (follows_from_arguments || TypeRequiresAssignment(bound_function.GetReturnType())) {
 			bound_function.SetReturnType(std::move(return_type));
 		}

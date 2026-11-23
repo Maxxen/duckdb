@@ -82,7 +82,6 @@ struct FunctionBinding {
 		return shared_ptr_cast<const SimpleFunction, const T>(function);
 	}
 
-
 	//! The cost of casting the arguments to the parameters of the overload
 	idx_t cost = 0;
 	//! The parameter of the overload that receives each argument - the positional arguments, followed by the named
@@ -95,8 +94,14 @@ struct FunctionBinding {
 	//! type of the parameter that receives it, where ANY stands for the type of the argument itself. A parameter the
 	//! call leaves out is filled by its default
 	vector<LogicalType> argument_types;
-	//! The return type of the overload, with the templates substituted
-	LogicalType return_type;
+	//! How many of those arguments are passed by position, and the names of the ones that follow them: the
+	//! keyword-only parameters, and what "**kwargs" receives
+	idx_t positional_count = 0;
+	vector<Identifier> named_argument_names;
+	//! What the call determines the variables of the overload to be: the type of every type variable, and the
+	//! value of every value variable. The return type follows from them
+	case_insensitive_map_t<LogicalType> variable_types;
+	case_insensitive_map_t<Value> variable_values;
 
 private:
 	friend class FunctionBinder;
@@ -466,6 +471,9 @@ public:
 	//! The fixed limit of the DECIMAL widths the binder constructs, if any: set while the keys of an index are bound,
 	//! and while a function is deserialized
 	optional_ptr<const DecimalWidthLimit> FixedDecimalWidthLimit() const;
+	//! The type the overload of a binding returns for the call. INVALID if its signature marks the return type as
+	//! ANY: its resolver or its bind callback determines it
+	DUCKDB_API static LogicalType BindReturnType(TypeCache &cache, const FunctionBinding &binding);
 
 	//! The type a type name stands for: a type of the catalog, or LAMBDA / TABLE. Without a ClientContext only the
 	//! built-in types are found
@@ -674,7 +682,7 @@ private:
 	                                                     vector<LogicalType> &order_types,
 	                                                     vector<LogicalType> &arg_order_types);
 	//! Cast the arguments of a call to the types of the parameters they fill
-	void CastToFunctionArguments(const Identifier &function_name, vector<LogicalType> &argument_types,
+	void CastToFunctionArguments(const Identifier &function_name, const vector<LogicalType> &argument_types,
 	                             vector<unique_ptr<Expression>> &children);
 
 	//! Select the best matching overload for the given full (maybe-named) argument list, and split it into the
@@ -696,20 +704,10 @@ private:
 	static FunctionBindResult SelectFunction(TypeCache &cache, const BaseFunctionSet &functions,
 	                                         const FunctionCallArguments &call, bool explicit_casts,
 	                                         optional_ptr<const DecimalWidthLimit> decimal_width_limit);
-	//! The function of a binding, bound to the types the binding resolved
-	template <class BOUND, class T>
-	static BOUND CreateBoundFunction(const FunctionBinding &binding);
-	//! The type a type name of a signature stands for, given what a call determines its type variables to be
-	static LogicalType BindTypeName(TypeCache &cache, const TypeName &name, const FunctionSignature &signature,
-	                                const FunctionVariables &variables);
-	//! The patterns of the parameters of a signature and of its return type, see BindTypePattern. Matching a call
-	//! is what binds a signature: these are for the check before it does, and for a function bound without one
-	static vector<LogicalType> BindParameterPatterns(TypeCache &cache, const FunctionSignature &signature);
-	static LogicalType BindReturnPattern(optional_ptr<ClientContext> context, const FunctionSignature &signature);
-	static LogicalType BindReturnPattern(TypeCache &cache, const FunctionSignature &signature);
-	//! The type a signature returns for a call: ANY if it is only known after binding
-	static LogicalType BindReturnType(TypeCache &cache, const FunctionSignature &signature,
-	                                  const FunctionVariables &variables);
+	//! The function of a binding, bound to the types the binding resolved. A return type the signature marks as ANY
+	//! is left unset: the resolver or the bind callback of the function sets it
+	template <class BOUND>
+	static BOUND CreateBoundFunction(TypeCache &cache, const FunctionBinding &binding);
 };
 
 } // namespace duckdb

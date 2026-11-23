@@ -298,8 +298,9 @@ LogicalType FunctionBinder::BindTypePattern(optional_ptr<ClientContext> context,
 	return BindTypeNameInternal(cache, name, signature, BindVariablePattern, BindValuePattern);
 }
 
-LogicalType FunctionBinder::BindTypeName(TypeCache &cache, const TypeName &name, const FunctionSignature &signature,
-                                         const FunctionVariables &variables) {
+//! The type a type name of a signature stands for, given what a call determines its variables to be
+static LogicalType BindSignatureType(TypeCache &cache, const TypeName &name, const FunctionSignature &signature,
+                                     const FunctionVariables &variables) {
 	return BindTypeNameInternal(
 	    cache, name, signature,
 	    [&](const Identifier &variable, LogicalTypeId constraint) {
@@ -313,6 +314,18 @@ LogicalType FunctionBinder::BindTypeName(TypeCache &cache, const TypeName &name,
 		    }
 		    return entry->second;
 	    });
+}
+
+//! The patterns of the parameters of a signature: what the arguments of a call are matched against before they
+//! determine the variables
+static vector<LogicalType> BindParameterPatterns(TypeCache &cache, const FunctionSignature &signature) {
+	vector<LogicalType> result;
+	result.reserve(signature.GetParameterCount());
+	for (auto &param : signature.GetParameters()) {
+		result.push_back(
+		    BindTypeNameInternal(cache, param.GetTypeName(), signature, BindVariablePattern, BindValuePattern));
+	}
+	return result;
 }
 
 //===--------------------------------------------------------------------===//
@@ -1053,7 +1066,7 @@ FunctionBinder::MatchOverload(TypeCache &cache, idx_t overload, shared_ptr<const
 			}
 			// an argument that is of the type already is taken as it is, the others are cast to that type
 			parameter_types[param_idx] = own_type.IsValid() ? call.GetArgument(own_type.GetIndex()).type
-			                                                : BindTypeName(cache, param_type, sig, variables);
+			                                                : BindSignatureType(cache, param_type, sig, variables);
 		}
 		// An argument passed as a type variable is cast to the type the variable is determined to be. An overload
 		// that takes any type is selected last, the more so the less the parameter says about the type
@@ -1065,7 +1078,14 @@ FunctionBinder::MatchOverload(TypeCache &cache, idx_t overload, shared_ptr<const
 			cost += TYPE_VARIABLE_COST - variable_uses[param_idx].depth;
 		}
 	}
-	binding.return_type = BindReturnType(cache, sig, variables);
+	for (auto &variable : sig.GetVariables()) {
+		auto &variable_name = variable.GetName().GetIdentifierName();
+		if (!variable.IsValue() && variables.types.find(variable_name) != variables.types.end()) {
+			binding.variable_types[variable_name] =
+			    GetVariableType(variable.GetName(), sig.GetConstraint(variable.GetName()), variables);
+		}
+	}
+	binding.variable_values = std::move(variables.values);
 	binding.parameter_types = std::move(parameter_types);
 
 	// The arguments the function is bound with are ordered by the parameter that receives them
@@ -1114,6 +1134,20 @@ FunctionBinder::MatchOverload(TypeCache &cache, idx_t overload, shared_ptr<const
 		        ? SubstituteAny(parameter_type, param.GetDefaultValue()->type())
 		        : parameter_type;
 	}
+
+	for (idx_t param_idx = 0; param_idx < parameter_count; param_idx++) {
+		auto &param = sig.GetParameter(param_idx);
+		if (param.GetKind() == FunctionParameterKind::KEYWORD_ONLY) {
+			binding.named_argument_names.push_back(param.GetName());
+		} else if (param.GetKind() == FunctionParameterKind::VAR_KEYWORD) {
+			for (idx_t i = received_positional_count; i < received_count; i++) {
+				if (binding.argument_to_parameters[i] == param_idx) {
+					binding.named_argument_names.push_back(call.GetArgument(i).name);
+				}
+			}
+		}
+	}
+	binding.positional_count = binding.argument_types.size() - binding.named_argument_names.size();
 
 	// all arguments are implicitly castable - with a parameter of an unknown type, the cost is 0
 	binding.cost = has_unknown_argument ? 0 : cost;
@@ -1209,23 +1243,29 @@ FunctionBinding FunctionBinder::MatchFunction(optional_ptr<ClientContext> contex
 	return std::move(*binding);
 }
 
-template <class BOUND, class T>
-BOUND FunctionBinder::CreateBoundFunction(const FunctionBinding &binding) {
-	return BOUND(binding.GetFunction<T>(), binding.argument_types, binding.return_type);
+template <class BOUND>
+BOUND FunctionBinder::CreateBoundFunction(TypeCache &cache, const FunctionBinding &binding) {
+	// the kind of function BOUND is a call of
+	using DEFINITION = typename std::remove_const<
+	    typename std::remove_reference<decltype(*std::declval<const BOUND &>().GetDefinition())>::type>::type;
+	// a return type that is marked as ANY is left unset, for the resolver or the bind callback
+	return BOUND(binding.GetFunction<DEFINITION>(), binding.argument_types, BindReturnType(cache, binding));
 }
 
 BoundScalarFunction FunctionBinder::BindScalarFunction(optional_ptr<ClientContext> context,
                                                        const ScalarFunction &function,
                                                        const FunctionCallArguments &call) {
 	auto binding = MatchFunction(context, make_shared_ptr<ScalarFunction>(function), call);
-	return CreateBoundFunction<BoundScalarFunction, ScalarFunction>(binding);
+	TypeCache cache(context);
+	return CreateBoundFunction<BoundScalarFunction>(cache, binding);
 }
 
 BoundAggregateFunction FunctionBinder::BindAggregateFunction(optional_ptr<ClientContext> context,
                                                              const AggregateFunction &function,
                                                              const FunctionCallArguments &call) {
 	auto binding = MatchFunction(context, make_shared_ptr<AggregateFunction>(function), call);
-	return CreateBoundFunction<BoundAggregateFunction, AggregateFunction>(binding);
+	TypeCache cache(context);
+	return CreateBoundFunction<BoundAggregateFunction>(cache, binding);
 }
 
 BoundAggregateFunction FunctionBinder::BindAggregateFunction(const AggregateFunction &function,
@@ -1238,7 +1278,8 @@ BoundWindowFunction FunctionBinder::BindWindowFunction(optional_ptr<ClientContex
                                                        const WindowFunction &function,
                                                        const FunctionCallArguments &call) {
 	auto binding = MatchFunction(context, make_shared_ptr<WindowFunction>(function), call);
-	return CreateBoundFunction<BoundWindowFunction, WindowFunction>(binding);
+	TypeCache cache(context);
+	return CreateBoundFunction<BoundWindowFunction>(cache, binding);
 }
 
 unique_ptr<BoundFunctionExpression> FunctionBinder::BindScalarFunction(optional_ptr<ClientContext> context,
@@ -1257,44 +1298,31 @@ static vector<LogicalType> PositionalTypes(const FunctionSignature &signature, c
 	                                                              signature.GetPositionalParameterCount()));
 }
 
-vector<LogicalType> FunctionBinder::BindParameterPatterns(TypeCache &cache, const FunctionSignature &signature) {
-	vector<LogicalType> result;
-	result.reserve(signature.GetParameterCount());
-	for (auto &param : signature.GetParameters()) {
-		result.push_back(
-		    BindTypeNameInternal(cache, param.GetTypeName(), signature, BindVariablePattern, BindValuePattern));
-	}
-	return result;
-}
-
-LogicalType FunctionBinder::BindReturnPattern(optional_ptr<ClientContext> context, const FunctionSignature &signature) {
-	TypeCache cache(context);
-	return BindReturnPattern(cache, signature);
-}
-
-LogicalType FunctionBinder::BindReturnPattern(TypeCache &cache, const FunctionSignature &signature) {
+LogicalType FunctionBinder::BindReturnType(TypeCache &cache, const FunctionBinding &binding) {
+	auto &signature = binding.GetFunction().GetSignature();
 	auto &return_type = signature.GetReturnType();
-	return return_type.IsType() ? BindTypeNameInternal(cache, return_type.GetTypeName(), signature, BindVariablePattern,
-	                                                   BindValuePattern)
-	                            : BindReturnType(cache, signature, FunctionVariables());
-}
-
-LogicalType FunctionBinder::BindReturnType(TypeCache &cache, const FunctionSignature &signature,
-                                           const FunctionVariables &variables) {
-	auto &return_type = signature.GetReturnType();
-	switch (return_type.GetKind()) {
-	case ReturnType::Kind::TYPE:
-		return BindTypeName(cache, return_type.GetTypeName(), signature, variables);
-	case ReturnType::Kind::ANY:
-		return LogicalType::ANY;
-	case ReturnType::Kind::TABLE:
-	case ReturnType::Kind::NONE:
+	if (!return_type.IsType()) {
+		// the signature declares no type: the resolver or the bind callback of the function sets it
 		return LogicalType::INVALID;
-	case ReturnType::Kind::EXPRESSION:
-		throw NotImplementedException("A return type that is computed by an expression");
-	default:
-		throw InternalException("Unknown ReturnType kind");
 	}
+	return BindTypeNameInternal(
+	    cache, return_type.GetTypeName(), signature,
+	    [&](const Identifier &variable, LogicalTypeId) {
+		    auto entry = binding.variable_types.find(variable.GetIdentifierName());
+		    if (entry == binding.variable_types.end()) {
+			    throw BinderException("Cannot deduce type variable '%s', it is not determined by the arguments",
+			                          variable.GetIdentifierName());
+		    }
+		    return entry->second;
+	    },
+	    [&](const Identifier &variable) {
+		    auto entry = binding.variable_values.find(variable.GetIdentifierName());
+		    if (entry == binding.variable_values.end()) {
+			    throw BinderException("Cannot deduce value '%s', it is not determined by the arguments",
+			                          variable.GetIdentifierName());
+		    }
+		    return entry->second;
+	    });
 }
 
 BoundTableFunction FunctionBinder::BindTableFunction(optional_ptr<ClientContext> context, const TableFunction &function,
@@ -1500,21 +1528,20 @@ static Value PlaceOption(ClientContext &context, Expression &expr, const TypedKw
 
 //! The arguments of a call in the order of the signature: [standard | *args | keyword-only | **kwargs], with the
 //! defaults of the parameters the call leaves out inserted
-struct ResolvedArguments {
-	vector<unique_ptr<Expression>> arguments;
-	//! The type of the parameter each argument fills, with the templates substituted
-	vector<LogicalType> types;
-	//! The leading arguments that are passed by position, and the names of the rest - keyword-only or "**kwargs"
-	idx_t positional_count = 0;
-	vector<Identifier> named_argument_names;
-};
-
-//! Drain the arguments of a call into the order of the signature of the function it binds to
-static ResolvedArguments ResolveArguments(const SimpleFunction &function, const FunctionBinding &binding,
-                                          vector<unique_ptr<Expression>> &arguments,
-                                          vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
-	const auto &sig = function.GetSignature();
+//! Drain the arguments of a call into the order the function is bound with: by the parameter that receives them,
+//! with its default for every parameter the call leaves out
+static vector<unique_ptr<Expression>>
+ResolveArguments(const FunctionBinding &binding, vector<unique_ptr<Expression>> arguments,
+                 vector<pair<Identifier, unique_ptr<Expression>>> named_arguments) {
+	const auto &sig = binding.GetFunction().GetSignature();
 	const auto received_positional_count = arguments.size();
+	for (auto &type : binding.argument_types) {
+		if (type.id() == LogicalTypeId::UNKNOWN) {
+			// no argument determines the type of an unresolved parameter - the call is bound again at EXECUTE
+			throw ParameterNotResolvedException();
+		}
+		D_ASSERT(!TypeVisitor::Contains(type, LogicalTypeId::UNKNOWN));
+	}
 
 	// the arguments every parameter receives, in the order they were passed
 	vector<vector<idx_t>> received(sig.GetParameterCount());
@@ -1522,58 +1549,46 @@ static ResolvedArguments ResolveArguments(const SimpleFunction &function, const 
 		received[binding.argument_to_parameters[i]].push_back(i);
 	}
 
-	ResolvedArguments result;
+	vector<unique_ptr<Expression>> result;
+	result.reserve(binding.argument_types.size());
 	for (idx_t param_idx = 0; param_idx < sig.GetParameterCount(); param_idx++) {
 		const auto &param = sig.GetParameter(param_idx);
 		for (auto i : received[param_idx]) {
-			if (param.GetKind() == FunctionParameterKind::VAR_KEYWORD) {
-				result.named_argument_names.push_back(named_arguments[i - received_positional_count].first);
-			}
 			auto &argument =
 			    i < received_positional_count ? arguments[i] : named_arguments[i - received_positional_count].second;
-			result.arguments.push_back(std::move(argument));
+			result.push_back(std::move(argument));
 		}
 		if (!param.IsVariadic() && received[param_idx].empty()) {
 			// the call matches the function, so every parameter it leaves out has a default
-			auto default_arg = make_uniq<BoundConstantExpression>(*param.GetDefaultValue(), param.GetName());
-			result.arguments.push_back(std::move(default_arg));
-		}
-		if (param.GetKind() == FunctionParameterKind::KEYWORD_ONLY) {
-			result.named_argument_names.push_back(param.GetName());
+			result.push_back(make_uniq<BoundConstantExpression>(*param.GetDefaultValue(), param.GetName()));
 		}
 	}
-	result.types = binding.argument_types;
-	for (auto &type : result.types) {
-		if (type.id() == LogicalTypeId::UNKNOWN) {
-			// no argument determines the type of an unresolved parameter - the call is bound again at EXECUTE
-			throw ParameterNotResolvedException();
-		}
-		D_ASSERT(!TypeVisitor::Contains(type, LogicalTypeId::UNKNOWN));
-	}
-	result.positional_count = result.arguments.size() - result.named_argument_names.size();
-	arguments.clear();
-	named_arguments.clear();
+	D_ASSERT(result.size() == binding.argument_types.size());
 	return result;
 }
 
 //! Fold the arguments of a table or pragma function to the constants it is called with. The arguments passed by
 //! position fill "parameters", so "range(1, col1 := 5)" reaches the callback exactly as "range(1, 5)" does. The
 //! keyword-only and "**kwargs" arguments go into "named_parameters" - an option "**kwargs" declares by the name of the
-//! option, cast to its type like an explicit cast, as it takes no part in selection
-static void FoldArguments(ClientContext &context, const SimpleFunction &function, ResolvedArguments &resolved,
-                          vector<Value> &parameters, named_argument_map_t &named_parameters) {
+//! option, cast to its type like an explicit cast, as it takes no part in selection. "arguments" are the arguments
+//! the function is bound with, from "first_argument" on
+static void FoldArguments(ClientContext &context, const FunctionBinding &binding,
+                          vector<unique_ptr<Expression>> &arguments, idx_t first_argument, vector<Value> &parameters,
+                          named_argument_map_t &named_parameters) {
+	auto &function = binding.GetFunction();
 	auto &signature = function.GetSignature();
 	auto option_schema = signature.GetTypedKwargs();
-	for (idx_t i = 0; i < resolved.arguments.size(); i++) {
-		auto &argument = *resolved.arguments[i];
-		if (i < resolved.positional_count) {
+	for (idx_t i = first_argument; i < binding.argument_types.size(); i++) {
+		auto &argument = *arguments[i - first_argument];
+		if (i < binding.positional_count) {
 			// A TABLE parameter is filled by the subquery itself rather than by a value, so its slot holds a plain
 			// NULL. A NULL of type TABLE would not do: TABLE has no physical type, so it cannot be deserialized
-			parameters.push_back(resolved.types[i].id() == LogicalTypeId::TABLE ? Value()
-			                                                                    : FoldArgument(context, argument));
+			parameters.push_back(binding.argument_types[i].id() == LogicalTypeId::TABLE
+			                         ? Value()
+			                         : FoldArgument(context, argument));
 			continue;
 		}
-		auto &name = resolved.named_argument_names[i - resolved.positional_count];
+		auto &name = binding.named_argument_names[i - binding.positional_count];
 		if (!option_schema || signature.GetParameterIndexByName(name).IsValid()) {
 			named_parameters.insert(make_pair(name, FoldArgument(context, argument)));
 			continue;
@@ -1610,18 +1625,19 @@ FunctionBinder::BindTableFunction(const TableFunctionSet &functions,
                                   vector<unique_ptr<Expression>> &positional_arguments,
                                   vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments, ErrorData &error) {
 	VerifyNamedArgumentsAccepted(functions, named_arguments);
-	auto selection = SelectFunction(GetTypeCache(), functions, {positional_arguments, named_arguments}, false, nullptr);
+	auto selection =
+	    SelectFunction(GetTypeCache(), functions, {positional_arguments, named_arguments}, false, FixedDecimalWidthLimit());
 	if (!selection) {
 		error = selection.GetError();
 		return nullptr;
 	}
 	auto &binding = selection.GetBinding();
 	auto definition = binding.GetFunction<TableFunction>();
-	auto resolved = ResolveArguments(*definition, binding, positional_arguments, named_arguments);
-	CastToFunctionArguments(definition->GetName(), resolved.types, resolved.arguments);
+	auto arguments = ResolveArguments(binding, std::move(positional_arguments), std::move(named_arguments));
+	CastToFunctionArguments(definition->GetName(), binding.argument_types, arguments);
 	vector<Value> parameters;
 	named_argument_map_t named_parameters;
-	FoldArguments(context, *definition, resolved, parameters, named_parameters);
+	FoldArguments(context, binding, arguments, 0, parameters, named_parameters);
 	// copied out of the set: binding the table function fills in the bound return types
 	return make_uniq<ResolvedTableFunction>(
 	    BoundTableFunction(definition, PositionalTypes(definition->GetSignature(), binding.parameter_types),
@@ -1638,7 +1654,8 @@ FunctionBinder::BindTableInOutFunction(const TableFunctionSet &functions, const 
 	for (idx_t i = 0; i < input_types.size(); i++) {
 		input_arguments.push_back(make_uniq<BoundReferenceExpression>(input_types[i], storage_t(i)));
 	}
-	auto selection = SelectFunction(GetTypeCache(), functions, {input_arguments, named_arguments}, false, nullptr);
+	auto selection =
+	    SelectFunction(GetTypeCache(), functions, {input_arguments, named_arguments}, false, FixedDecimalWidthLimit());
 	if (!selection) {
 		error = selection.GetError();
 		return nullptr;
@@ -1652,17 +1669,15 @@ FunctionBinder::BindTableInOutFunction(const TableFunctionSet &functions, const 
 			                      argument.first);
 		}
 	}
-	auto resolved = ResolveArguments(*definition, binding, input_arguments, named_arguments);
+	auto arguments = ResolveArguments(binding, std::move(input_arguments), std::move(named_arguments));
 	// Input columns remain in the subquery; only named options are cast and folded here.
-	const auto positional_count =
-	    NumericCast<vector<unique_ptr<Expression>>::difference_type>(resolved.positional_count);
-	resolved.arguments.erase(resolved.arguments.begin(), resolved.arguments.begin() + positional_count);
-	resolved.types.erase(resolved.types.begin(), resolved.types.begin() + positional_count);
-	resolved.positional_count = 0;
-	CastToFunctionArguments(definition->GetName(), resolved.types, resolved.arguments);
+	const auto positional_count = NumericCast<vector<LogicalType>::difference_type>(binding.positional_count);
+	arguments.erase(arguments.begin(), arguments.begin() + positional_count);
+	vector<LogicalType> option_types(binding.argument_types.begin() + positional_count, binding.argument_types.end());
+	CastToFunctionArguments(definition->GetName(), option_types, arguments);
 	vector<Value> parameters;
 	named_argument_map_t named_parameters;
-	FoldArguments(context, *definition, resolved, parameters, named_parameters);
+	FoldArguments(context, binding, arguments, binding.positional_count, parameters, named_parameters);
 	return make_uniq<ResolvedTableFunction>(
 	    BoundTableFunction(definition, PositionalTypes(definition->GetSignature(), binding.parameter_types),
 	                       binding.parameter_types),
@@ -1673,23 +1688,25 @@ unique_ptr<BoundPragmaInfo> FunctionBinder::BindPragmaFunction(
     const PragmaFunctionSet &functions, vector<unique_ptr<Expression>> &positional_arguments,
     vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments, ErrorData &error) {
 	VerifyNamedArgumentsAccepted(functions, named_arguments);
-	auto selection = SelectFunction(GetTypeCache(), functions, {positional_arguments, named_arguments}, false, nullptr);
+	auto selection =
+	    SelectFunction(GetTypeCache(), functions, {positional_arguments, named_arguments}, false, FixedDecimalWidthLimit());
 	if (!selection) {
 		error = selection.GetError();
 		return nullptr;
 	}
 	auto &binding = selection.GetBinding();
 	auto definition = binding.GetFunction<PragmaFunction>();
-	auto resolved = ResolveArguments(*definition, binding, positional_arguments, named_arguments);
-	CastToFunctionArguments(definition->GetName(), resolved.types, resolved.arguments);
+	auto arguments = ResolveArguments(binding, std::move(positional_arguments), std::move(named_arguments));
+	CastToFunctionArguments(definition->GetName(), binding.argument_types, arguments);
 	vector<Value> parameters;
 	named_argument_map_t named_parameters;
-	FoldArguments(context, *definition, resolved, parameters, named_parameters);
+	FoldArguments(context, binding, arguments, 0, parameters, named_parameters);
 	return make_uniq<BoundPragmaInfo>(*definition, std::move(parameters), std::move(named_parameters),
 	                                  binding.parameter_types);
 }
 
-void FunctionBinder::CastToFunctionArguments(const Identifier &function_name, vector<LogicalType> &argument_types,
+void FunctionBinder::CastToFunctionArguments(const Identifier &function_name,
+                                             const vector<LogicalType> &argument_types,
                                              vector<unique_ptr<Expression>> &children) {
 	// Varargs should be expanded by this point
 	// If not, the function has somehow added more argument expressions during binding, which is not allowed.
@@ -1858,15 +1875,16 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunctionCa
 	// Untyped NULLs never go through type resolution. For typed NULL constants, resolve the function's types only
 	// when needed to determine the return type. Preserve result collation without invoking bind callbacks.
 	if (bound_function.GetNullHandling() == FunctionNullHandling::DEFAULT_NULL_HANDLING) {
-		// the type the function declares, whatever the arguments determine it to be
-		const auto return_type = BindReturnPattern(GetTypeCache(), bound_function.GetSignature());
+		// whether the function declares a type that is the same whatever the arguments are
+		const bool has_complete_return_type = bound_function.GetSignature().HasCompleteReturnType();
 		if (HasUntypedNullArgument(regular_args, keyword_args)) {
-			return make_uniq<BoundConstantExpression>(Value(NullReturnType(return_type)), std::move(alias),
-			                                          query_location);
+			auto null_type = has_complete_return_type ? BindReturnType(GetTypeCache(), binding)
+			                                          : LogicalType(LogicalType::SQLNULL);
+			return make_uniq<BoundConstantExpression>(Value(std::move(null_type)), std::move(alias), query_location);
 		}
 		if (HasNullConstantArgument(context, regular_args, keyword_args, binder)) {
-			if (return_type.IsComplete()) {
-				auto null_function = CreateBoundFunction<BoundScalarFunction, ScalarFunction>(binding);
+			if (has_complete_return_type) {
+				auto null_function = CreateBoundFunction<BoundScalarFunction>(GetTypeCache(), binding);
 				for (auto &child : keyword_args) {
 					regular_args.push_back(std::move(child.second));
 				}
@@ -2128,19 +2146,6 @@ static vector<LogicalType> CaptureLogicalArguments(const BoundSimpleFunction &fu
 	return function.GetArguments();
 }
 
-//! Let the signature resolve the return type from the resolved arguments of the call
-static void ResolveReturnType(ClientContext &context, const SimpleFunction &function,
-                              BoundSimpleFunction &bound_function, vector<unique_ptr<Expression>> &arguments,
-                              optional_ptr<Binder> binder, optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
-	auto &signature = function.GetSignature();
-	auto resolver = signature.GetReturnType().GetResolver();
-	if (!resolver) {
-		return;
-	}
-	ResolveReturnTypeInput input(context, bound_function, signature, arguments, binder, decimal_width_limit);
-	bound_function.SetReturnType(resolver(input));
-}
-
 pair<BoundScalarFunction, unique_ptr<FunctionData>>
 FunctionBinder::ResolveScalarFunction(const FunctionBinding &binding, vector<unique_ptr<Expression>> &arguments,
                                       vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
@@ -2153,12 +2158,11 @@ FunctionBinder::ResolveScalarFunction(const FunctionBinding &binding, vector<uni
                                       bool invoke_bind) {
 	auto &function = binding.GetFunction();
 	// Make a BoundScalarFunction out of the ScalarFunction, so we can store bind info and other properties in it.
-	auto bound_function = CreateBoundFunction<BoundScalarFunction, ScalarFunction>(binding);
+	auto bound_function = CreateBoundFunction<BoundScalarFunction>(GetTypeCache(), binding);
 
 	// Reorder named args and expand the variadic arguments
-	auto resolved = ResolveArguments(function, binding, arguments, named_arguments);
-	bound_function.SetNamedArguments(resolved.positional_count, std::move(resolved.named_argument_names));
-	arguments = std::move(resolved.arguments);
+	arguments = ResolveArguments(binding, std::move(arguments), std::move(named_arguments));
+	bound_function.SetNamedArguments(binding.positional_count, binding.named_argument_names);
 
 	bound_function.SetLogicalArguments(CaptureLogicalArguments(bound_function, arguments));
 
@@ -2167,7 +2171,12 @@ FunctionBinder::ResolveScalarFunction(const FunctionBinding &binding, vector<uni
 	auto pushed_collation =
 	    PushArgumentCollations(context, bound_function, bound_function.GetProperties(), arguments, is_index_key);
 	CastToFunctionArguments(bound_function.GetName(), bound_function.GetArguments(), arguments);
-	ResolveReturnType(context, function, bound_function, arguments, binder, decimal_width_limit);
+	// a return type that is marked as ANY is what the resolver of the signature makes of the arguments
+	auto &signature = function.GetSignature();
+	if (auto resolver = signature.GetReturnType().GetResolver()) {
+		ResolveReturnTypeInput input(context, bound_function, signature, arguments, binder, decimal_width_limit);
+		bound_function.SetReturnType(resolver(input));
+	}
 
 	unique_ptr<FunctionData> bind_info;
 	if (invoke_bind) {
@@ -2192,6 +2201,8 @@ FunctionBinder::ResolveScalarFunction(const FunctionBinding &binding, vector<uni
 			FunctionModifiedDatabasesInput input(bind_info.get(), properties);
 			bound_function.GetModifiedDatabasesCallback()(context, input);
 		}
+		// a signature that declares no return type leaves it to the resolver or the bind callback
+		D_ASSERT(bound_function.GetReturnType().id() != LogicalTypeId::INVALID);
 	}
 
 	PropagateReturnCollation(bound_function, bound_function.GetProperties(), arguments, pushed_collation);
@@ -2271,18 +2282,22 @@ FunctionBinder::ResolveAggregateFunction(const FunctionBinding &binding, vector<
                                          vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments) {
 	auto &function = binding.GetFunction();
 	// Make a BoundFunction out of the func
-	auto bound_function = CreateBoundFunction<BoundAggregateFunction, AggregateFunction>(binding);
+	auto bound_function = CreateBoundFunction<BoundAggregateFunction>(GetTypeCache(), binding);
 
 	// Reorder named args and expand the variadic arguments
-	auto resolved = ResolveArguments(function, binding, children, named_arguments);
-	bound_function.SetNamedArguments(resolved.positional_count, std::move(resolved.named_argument_names));
-	children = std::move(resolved.arguments);
+	children = ResolveArguments(binding, std::move(children), std::move(named_arguments));
+	bound_function.SetNamedArguments(binding.positional_count, binding.named_argument_names);
 
 	bound_function.SetLogicalArguments(CaptureLogicalArguments(bound_function, children));
 
 	unique_ptr<FunctionData> bind_info;
 
-	ResolveReturnType(context, function, bound_function, children, binder, decimal_width_limit);
+	// a return type that is marked as ANY is what the resolver of the signature makes of the arguments
+	auto &signature = function.GetSignature();
+	if (auto resolver = signature.GetReturnType().GetResolver()) {
+		ResolveReturnTypeInput input(context, bound_function, signature, children, binder, decimal_width_limit);
+		bound_function.SetReturnType(resolver(input));
+	}
 	if (bound_function.GetCallbacks().HasBindCallback()) {
 		BindAggregateFunctionInput input(context, bound_function, children, binder, decimal_width_limit);
 		bind_info = bound_function.GetCallbacks().GetBindCallback()(input);
@@ -2291,6 +2306,8 @@ FunctionBinder::ResolveAggregateFunction(const FunctionBinding &binding, vector<
 		children.resize(MinValue(bound_function.GetArguments().size(), children.size()));
 		VerifyArgumentCount(bound_function, children.size());
 	}
+	// a signature that declares no return type leaves it to the resolver or the bind callback
+	D_ASSERT(bound_function.GetReturnType().id() != LogicalTypeId::INVALID);
 
 	bound_function.SetLogicalReturnType(bound_function.GetReturnType());
 
@@ -2392,19 +2409,23 @@ FunctionBinder::ResolveWindowFunction(const FunctionBinding &binding, vector<uni
                                       optional_ptr<vector<LogicalType>> order_types,
                                       optional_ptr<vector<LogicalType>> arg_order_types) {
 	auto &function = binding.GetFunction();
-	auto bound_function = CreateBoundFunction<BoundWindowFunction, WindowFunction>(binding);
+	auto bound_function = CreateBoundFunction<BoundWindowFunction>(GetTypeCache(), binding);
 
 	// Reorder named args and expand the variadic arguments
-	auto resolved = ResolveArguments(function, binding, children, named_arguments);
-	bound_function.SetNamedArguments(resolved.positional_count, std::move(resolved.named_argument_names));
-	children = std::move(resolved.arguments);
+	children = ResolveArguments(binding, std::move(children), std::move(named_arguments));
+	bound_function.SetNamedArguments(binding.positional_count, binding.named_argument_names);
 
 	auto logical_arguments = CaptureLogicalArguments(bound_function, children);
 	auto argument_types = bound_function.GetArguments();
 
 	unique_ptr<FunctionData> bind_info;
 
-	ResolveReturnType(context, function, bound_function, children, binder, decimal_width_limit);
+	// a return type that is marked as ANY is what the resolver of the signature makes of the arguments
+	auto &signature = function.GetSignature();
+	if (auto resolver = signature.GetReturnType().GetResolver()) {
+		ResolveReturnTypeInput input(context, bound_function, signature, children, binder, decimal_width_limit);
+		bound_function.SetReturnType(resolver(input));
+	}
 	if (bound_function.HasBindCallback()) {
 		BindWindowFunctionInput input(context, bound_function, children, order_types, arg_order_types, binder);
 		bind_info = bound_function.GetBindCallback()(input);
@@ -2412,6 +2433,8 @@ FunctionBinder::ResolveWindowFunction(const FunctionBinding &binding, vector<uni
 		children.resize(MinValue(bound_function.GetArguments().size(), children.size()));
 		VerifyArgumentCount(bound_function, children.size());
 	}
+	// a signature that declares no return type leaves it to the resolver or the bind callback
+	D_ASSERT(bound_function.GetReturnType().id() != LogicalTypeId::INVALID);
 
 	for (idx_t i = 0; i < argument_types.size() && i < bound_function.GetArguments().size(); i++) {
 		// an argument the bind callback gave another type is called with that type
