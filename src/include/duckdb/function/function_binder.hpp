@@ -232,8 +232,12 @@ public:
 	struct IncompatibleArgument {
 		static constexpr auto TYPE = Type::INCOMPATIBLE_ARGUMENT;
 		idx_t argument;
-		//! The type of the parameter that receives the argument, as it reads
-		string parameter_type;
+		//! The parameter that receives the argument
+		idx_t parameter;
+		//! The type the argument is matched against
+		LogicalType parameter_type;
+		//! Whether the parameter reads as it is declared: the type of an unconstrained type variable stands for any
+		bool reads_as_declared;
 
 		string ToString(const SimpleFunction &function, const FunctionBindError &error) const;
 	};

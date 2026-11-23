@@ -611,7 +611,8 @@ static optional<Value> GetArgumentConstant(optional_ptr<ClientContext> context, 
 //! Determine the value variable a parameter is declared as by the value that is passed to it. "argument" is the
 //! argument that passes it, invalid if it is the default of the parameter
 static optional<FunctionMismatch::Reason> InferValue(const TypeVariable &variable, optional<Value> constant,
-                                                     optional_idx argument, FunctionVariables &variables) {
+                                                     optional_idx argument, idx_t parameter,
+                                                     FunctionVariables &variables) {
 	auto &variable_name = variable.GetName().GetIdentifierName();
 	if (!constant) {
 		return FunctionMismatch::Reason(FunctionMismatch::ConstantRequired {argument.GetIndex(), variable_name});
@@ -626,7 +627,9 @@ static optional<FunctionMismatch::Reason> InferValue(const TypeVariable &variabl
 		if (!argument.IsValid()) {
 			throw InternalException("The default of a parameter cannot be the value of %s", variable.ToString());
 		}
-		return FunctionMismatch::Reason(FunctionMismatch::IncompatibleArgument {argument.GetIndex(), variable_name});
+		// the parameter reads as the variable it is declared as
+		return FunctionMismatch::Reason(
+		    FunctionMismatch::IncompatibleArgument {argument.GetIndex(), parameter, LogicalType(), true});
 	}
 	FunctionMismatch::TemplateDeduction deduction;
 	if (!UnifyValue(variable.GetName(), std::move(*value), variables, deduction)) {
@@ -650,7 +653,8 @@ static optional<FunctionMismatch::Reason> DeduceVariables(optional_ptr<ClientCon
 		auto value_variable = FindValueVariable(param_type, sig);
 		if (value_variable && argument.type.id() != LogicalTypeId::UNKNOWN &&
 		    argument.type.id() != LogicalTypeId::SQLNULL) {
-			auto value_mismatch = InferValue(*value_variable, GetArgumentConstant(context, argument), i, variables);
+			auto value_mismatch = InferValue(*value_variable, GetArgumentConstant(context, argument), i,
+			                                 binding.argument_to_parameters[i], variables);
 			if (value_mismatch) {
 				return value_mismatch;
 			}
@@ -668,7 +672,7 @@ static optional<FunctionMismatch::Reason> DeduceVariables(optional_ptr<ClientCon
 		}
 		auto value_variable = FindValueVariable(param.GetTypeName(), sig);
 		if (value_variable) {
-			auto value_mismatch = InferValue(*value_variable, *param.GetDefaultValue(), optional_idx(), variables);
+			auto value_mismatch = InferValue(*value_variable, *param.GetDefaultValue(), optional_idx(), i, variables);
 			if (value_mismatch) {
 				return value_mismatch;
 			}
@@ -951,12 +955,6 @@ FunctionBinder::MatchOverload(TypeCache &cache, idx_t overload, shared_ptr<const
 			variable_uses.push_back(GetVariableUse(sig, param.GetTypeName()));
 		}
 	}
-	// a parameter reads as the kind of type a constrained variable stands for
-	auto parameter_type_name = [&](idx_t param_idx) {
-		const bool unconstrained = has_variables && variable_uses[param_idx].unconstrained;
-		return unconstrained ? sig.GetParameter(param_idx).GetTypeName().ToString()
-		                     : parameter_types[param_idx].ToString();
-	};
 
 	idx_t cost = 0;
 	bool has_unknown_argument = false;
@@ -989,7 +987,8 @@ FunctionBinder::MatchOverload(TypeCache &cache, idx_t overload, shared_ptr<const
 			cast_cost = ImplicitCastCost(context, arg_type, parameter_types[param_idx]);
 		}
 		if (cast_cost < 0) {
-			mismatch(FunctionMismatch::IncompatibleArgument {i, parameter_type_name(param_idx)});
+			// a parameter reads as the kind of type a constrained variable stands for
+			mismatch(FunctionMismatch::IncompatibleArgument {i, param_idx, parameter_types[param_idx], unconstrained});
 			continue;
 		}
 		if (unconstrained && arg_type.id() != LogicalTypeId::SQLNULL) {

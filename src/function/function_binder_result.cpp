@@ -42,15 +42,18 @@ string FunctionMismatch::AlreadyPassedByPosition::ToString(const SimpleFunction 
 	                          error.GetCall().GetArgument(argument).name.GetIdentifierName());
 }
 
-string FunctionMismatch::IncompatibleArgument::ToString(const SimpleFunction &, const FunctionBindError &error) const {
+string FunctionMismatch::IncompatibleArgument::ToString(const SimpleFunction &function,
+                                                        const FunctionBindError &error) const {
 	auto &name = error.GetCall().GetArgument(argument).name;
 	auto &argument_type = error.GetCall().GetArgument(argument).type;
+	auto parameter_name = reads_as_declared ? function.GetSignature().GetParameter(parameter).GetTypeName().ToString()
+	                                        : parameter_type.ToString();
 	if (name.empty()) {
 		return StringUtil::Format("Argument %llu of type %s cannot be implicitly cast to %s", argument + 1,
-		                          argument_type.ToString(), parameter_type);
+		                          argument_type.ToString(), parameter_name);
 	}
 	return StringUtil::Format("Argument \"%s\" of type %s cannot be implicitly cast to %s", name.GetIdentifierName(),
-	                          argument_type.ToString(), parameter_type);
+	                          argument_type.ToString(), parameter_name);
 }
 
 string FunctionMismatch::TemplateDeduction::ToString(const SimpleFunction &function, const FunctionBindError &) const {
