@@ -116,6 +116,10 @@ static bool TemplatedBooleanOperation(const Value &left, const Value &right) {
 	case PhysicalType::INTERVAL:
 		return OP::Operation(left.GetValueUnsafe<interval_t>(), right.GetValueUnsafe<interval_t>());
 	case PhysicalType::VARCHAR:
+		if (left_type.id() == LogicalTypeId::TYPE) {
+			// types compare as they do in a vector, by their bytes
+			return OP::Operation(TypeValue::GetSerialized(left), TypeValue::GetSerialized(right));
+		}
 		return OP::Operation(StringValue::Get(left), StringValue::Get(right));
 	case PhysicalType::STRUCT: {
 		if (left_type.id() == LogicalTypeId::VARIANT) {

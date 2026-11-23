@@ -103,7 +103,12 @@ void VectorStringBuffer::SetValue(const LogicalType &type, idx_t index, const Va
 	}
 	validity.Set(index, !val.IsNull());
 	if (!val.IsNull()) {
-		reinterpret_cast<string_t *>(data_ptr)[index] = GetHeap().AddBlob(StringValue::Get(val));
+		auto strings = reinterpret_cast<string_t *>(data_ptr);
+		if (type.id() == LogicalTypeId::TYPE) {
+			strings[index] = GetHeap().AddBlob(TypeValue::GetSerialized(val));
+		} else {
+			strings[index] = GetHeap().AddBlob(StringValue::Get(val));
+		}
 	}
 }
 

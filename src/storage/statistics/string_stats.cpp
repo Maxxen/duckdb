@@ -720,7 +720,12 @@ FilterPropagateResult StringStats::CheckZonemap(const BaseStatistics &stats, Exp
 	for (auto &constant_value : constants) {
 		D_ASSERT(constant_value.type() == stats.GetType());
 		D_ASSERT(!constant_value.IsNull());
-		auto &constant = StringValue::Get(constant_value);
+		string serialized_type;
+		if (constant_value.type().id() == LogicalTypeId::TYPE) {
+			serialized_type = TypeValue::GetSerialized(constant_value);
+		}
+		auto &constant =
+		    constant_value.type().id() == LogicalTypeId::TYPE ? serialized_type : StringValue::Get(constant_value);
 		FilterPropagateResult prune_result;
 		if (HasMinMax(stats)) {
 			// Special handle cases where constant is equal to the truncated min bound, but we're able to prune a few

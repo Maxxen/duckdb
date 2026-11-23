@@ -509,6 +509,8 @@ struct UnionValue {
 
 struct TypeValue {
 	DUCKDB_API static LogicalType GetType(const Value &value);
+	//! The type in the binary format that a vector and the statistics hold it in
+	DUCKDB_API static string GetSerialized(const Value &value);
 };
 
 struct VariantValue {

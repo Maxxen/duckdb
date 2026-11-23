@@ -644,7 +644,10 @@ BaseStatistics BaseStatistics::FromConstantType(const Value &input) {
 	}
 	case StatisticsType::STRING_STATS: {
 		auto result = StringStats::CreateEmpty(input.type());
-		if (!input.IsNull()) {
+		if (!input.IsNull() && input.type().id() == LogicalTypeId::TYPE) {
+			auto serialized_type = TypeValue::GetSerialized(input);
+			StringStats::FromConstant(result, string_t(serialized_type));
+		} else if (!input.IsNull()) {
 			auto &string_value = StringValue::Get(input);
 			StringStats::FromConstant(result, string_t(string_value));
 		}
