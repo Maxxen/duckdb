@@ -249,27 +249,18 @@ unique_ptr<ExportAggregateBindData> BindExportedAggregate(FunctionBinder &functi
 	}
 	auto &aggr_entry = func.Cast<AggregateFunctionCatalogEntry>();
 
+	// a state is of an aggregate that is bound to concrete argument types
+	for (idx_t arg_idx = 0; arg_idx < argument_types.size(); arg_idx++) {
+		if (!argument_types[arg_idx].IsComplete()) {
+			throw BinderException("Aggregate %s requires a concrete type for signature argument %llu", function_name,
+			                      arg_idx + 1);
+		}
+	}
 	auto best_function = FunctionBinder::SelectFunction(context, aggr_entry.functions, argument_types, false,
 	                                                    function_binder.FixedDecimalWidthLimit());
 	if (!best_function.IsSuccess()) {
 		throw BinderException("Could not re-bind exported aggregate %s: %s", function_name,
 		                      best_function.GetError().Message());
-	}
-	const auto aggr = best_function.GetBinding().GetFunction<AggregateFunction>();
-	const auto &signature = aggr->GetSignature();
-	for (idx_t arg_idx = 0; arg_idx < argument_types.size(); arg_idx++) {
-		if (argument_types[arg_idx].id() != LogicalTypeId::ANY) {
-			continue;
-		}
-		auto parameter = arg_idx < signature.GetPositionalParameterCount()
-		                     ? optional_ptr<const FunctionParameter>(signature.GetParameter(arg_idx))
-		                     : signature.GetArgs();
-		// ANY must describe a state-capable implementation, not a placeholder for type specialization.
-		const bool canonical_any = parameter && signature.AcceptsAnyType(parameter->GetTypeName());
-		if (!canonical_any || !aggr->HasGetStateTypeCallback()) {
-			throw BinderException("Aggregate %s requires a concrete type for signature argument %llu", function_name,
-			                      arg_idx + 1);
-		}
 	}
 
 	// Bind callbacks can use NULL placeholders for parameters carried by the serialized state.
@@ -292,9 +283,7 @@ unique_ptr<ExportAggregateBindData> BindExportedAggregate(FunctionBinder &functi
 	const auto &bound_args = bound_aggr.GetArguments();
 	bool signature_matches = bound_args.size() == argument_types.size();
 	for (idx_t arg_idx = 0; signature_matches && arg_idx < bound_args.size(); arg_idx++) {
-		// an ANY argument in the function signature (e.g. string_agg's data argument) matches any requested type
-		if (bound_args[arg_idx].id() != LogicalTypeId::ANY &&
-		    !bound_args[arg_idx].EqualsIncludingCollation(argument_types[arg_idx])) {
+		if (!bound_args[arg_idx].EqualsIncludingCollation(argument_types[arg_idx])) {
 			signature_matches = false;
 		}
 	}
@@ -303,23 +292,12 @@ unique_ptr<ExportAggregateBindData> BindExportedAggregate(FunctionBinder &functi
 		                      StringUtil::ToString(bound_args, ", "), StringUtil::ToString(argument_types, ", "));
 	}
 
-	// The signature can retain ANY, but materialized result and state values must have complete types.
+	// materialized result and state values must have complete types
 	if (!bound_aggr.GetReturnType().IsComplete()) {
 		throw BinderException("Aggregate %s signature does not resolve a complete result type", function_name);
 	}
 	if (bound_aggr.HasGetStateTypeCallback() && !bound_aggr.GetStateType(bind_info.get()).type.IsComplete()) {
 		throw BinderException("Aggregate %s signature does not resolve a complete state type", function_name);
-	}
-	if (bound_aggr.HasGetStateTypeCallback()) {
-		// ANY stands for an argument the state does not depend on, not for a type that is yet to be chosen
-		auto layout = bound_aggr.GetStateType(bind_info.get());
-		for (idx_t arg_idx = 0; arg_idx < argument_types.size(); arg_idx++) {
-			if (argument_types[arg_idx].id() == LogicalTypeId::ANY &&
-			    layout.independent_arguments.find(arg_idx) == layout.independent_arguments.end()) {
-				throw BinderException("Aggregate %s requires a concrete type for signature argument %llu",
-				                      function_name, arg_idx + 1);
-			}
-		}
 	}
 	const auto state_size = bound_aggr.GetStateSize(bind_info.get());
 	return make_uniq<ExportAggregateBindData>(bound_aggr, std::move(bind_info), state_size);
@@ -602,13 +580,7 @@ void CombineAggrFinalize(Vector &state, AggregateFinalizeInputData &aggr_input_d
 void EncodeStateParameters(ExtensionTypeInfo &ext_info, const BoundAggregateFunction &bound_function,
                            const AggregateStateLayout &layout) {
 	ext_info.properties.emplace("function_name", bound_function.GetName());
-	// an argument the state does not depend on is recorded as ANY: the states have one signature for all its types
-	auto call_arguments = bound_function.GetArguments();
-	for (auto arg_idx : layout.independent_arguments) {
-		if (arg_idx < call_arguments.size()) {
-			call_arguments[arg_idx] = LogicalType::ANY;
-		}
-	}
+	auto &call_arguments = bound_function.GetArguments();
 	vector<Value> arguments;
 	if (layout.constant_parameters.empty()) {
 		// all parameters are plain types - store the parameters as a list of types
@@ -688,12 +660,7 @@ LogicalType ParseSignatureType(ClientContext &context, const Value &arg, const D
 		return TypeValue::GetType(arg);
 	}
 	if (arg.type().id() == LogicalTypeId::VARCHAR) {
-		auto &name = StringValue::Get(arg);
-		// ANY describes a canonical aggregate argument, not an ordinary SQL value type.
-		if (StringUtil::CIEquals(name, "ANY")) {
-			return LogicalType::ANY;
-		}
-		return TransformStringToLogicalType(name, context, &decimal_width_limit);
+		return TransformStringToLogicalType(StringValue::Get(arg), context, &decimal_width_limit);
 	}
 	throw BinderException("to_aggregate_state: the signature must be a list of types");
 }
@@ -864,9 +831,7 @@ unique_ptr<FunctionData> BindToAggregateState(INPUT &input, LogicalType &value_t
 			                      (uint64_t)aggr_arguments.size(), (uint64_t)column_count);
 		}
 		for (idx_t i = 0; i < aggr_arguments.size(); i++) {
-			if (aggr_arguments[i].IsComplete()) {
-				buffer_columns[i].second = aggr_arguments[i];
-			}
+			buffer_columns[i].second = aggr_arguments[i];
 		}
 		const auto buffer_struct = LogicalType::STRUCT(std::move(buffer_columns));
 		if (!buffer_struct.IsComplete()) {
@@ -930,19 +895,11 @@ unique_ptr<ParsedExpression> ExportAggregateFunction::StateToSQL(const LogicalTy
 	vector<LogicalType> types;
 	map<idx_t, Value> constants;
 	ParseStateParameters(parameters->second, types, constants);
-	// Concrete TYPE values retain collations that the SQL type name alone cannot express.
-	// Canonical ANY arguments are signature markers, not SQL value types.
-	const bool has_any = std::find(types.begin(), types.end(), LogicalType::ANY) != types.end();
+	// TYPE values retain collations that the SQL type name alone cannot express
 	vector<Value> signature;
 	vector<unique_ptr<ParsedExpression>> constant_arguments;
 	for (idx_t i = 0; i < types.size(); i++) {
-		if (has_any && ((types[i] != LogicalType::ANY && !TypeExpression::CanRepresent(types[i])) ||
-		                TypeVisitor::Contains(types[i], [](const LogicalType &child) {
-			                return child.id() == LogicalTypeId::VARCHAR && !StringType::GetCollation(child).empty();
-		                }))) {
-			return nullptr;
-		}
-		signature.push_back(has_any ? Value(types[i].ToString()) : Value::TYPE(types[i]));
+		signature.push_back(Value::TYPE(types[i]));
 		auto entry = constants.find(i);
 		unique_ptr<ParsedExpression> constant;
 		try {
@@ -956,8 +913,7 @@ unique_ptr<ParsedExpression> ExportAggregateFunction::StateToSQL(const LogicalTy
 	arguments.push_back(std::move(value));
 	arguments.push_back(ConstantExpression::FromValue(name->second));
 	try {
-		arguments.push_back(ConstantExpression::FromValue(
-		    Value::LIST(has_any ? LogicalType::VARCHAR : LogicalType::TYPE(), std::move(signature))));
+		arguments.push_back(ConstantExpression::FromValue(Value::LIST(LogicalType::TYPE(), std::move(signature))));
 	} catch (const NotImplementedException &) {
 		return nullptr;
 	}

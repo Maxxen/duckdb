@@ -468,7 +468,8 @@ void BuiltinFunctions::Initialize() {
 
 const LogicalType &ResolveReturnTypeInput::GetArgumentType(idx_t arg_idx) const {
 	auto &parameter_type = function.GetArguments()[arg_idx];
-	return parameter_type.IsComplete() ? parameter_type : arguments[arg_idx]->GetReturnType();
+	D_ASSERT(parameter_type.IsComplete());
+	return parameter_type;
 }
 
 const Identifier &ResolveReturnTypeInput::GetFunctionName() const {

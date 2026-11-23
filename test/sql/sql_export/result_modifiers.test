@@ -181,7 +181,7 @@ EXPLAIN (SQL) SELECT NULL::DECIMAL(9,2) a, [1,NULL] b, {'x': 2} c WHERE false;
 ----
 sql	<REGEX>:.*WHERE .*FALSE.*
 
-# A typed empty relation retains COUNT's canonical ANY signature under strict SQL export.
+# A typed empty relation retains the signature of COUNT's state under strict SQL export.
 query T
 SELECT * FROM (SELECT count(x) EXPORT_STATE s FROM (VALUES(1))t(x))t WHERE false;
 ----
@@ -189,7 +189,7 @@ SELECT * FROM (SELECT count(x) EXPORT_STATE s FROM (VALUES(1))t(x))t WHERE false
 query TT
 EXPLAIN (SQL) SELECT * FROM (SELECT count(x) EXPORT_STATE s FROM (VALUES(1))t(x))t WHERE false;
 ----
-sql	<REGEX>:.*to_aggregate_state.*ANY.*
+sql	<REGEX>:.*to_aggregate_state.*'count'.*INTEGER.*
 
 query I rowsort
 (VALUES (1),(1),(1),(NULL),(NULL),(2)) UNION (VALUES (1),(1),(NULL),(3));

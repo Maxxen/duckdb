@@ -1544,10 +1544,11 @@ static ResolvedArguments ResolveArguments(const SimpleFunction &function, const 
 	}
 	result.types = binding.argument_types;
 	for (auto &type : result.types) {
-		if (TypeVisitor::Contains(type, LogicalTypeId::UNKNOWN)) {
+		if (type.id() == LogicalTypeId::UNKNOWN) {
 			// no argument determines the type of an unresolved parameter - the call is bound again at EXECUTE
 			throw ParameterNotResolvedException();
 		}
+		D_ASSERT(!TypeVisitor::Contains(type, LogicalTypeId::UNKNOWN));
 	}
 	result.positional_count = result.arguments.size() - result.named_argument_names.size();
 	arguments.clear();
@@ -1688,18 +1689,6 @@ unique_ptr<BoundPragmaInfo> FunctionBinder::BindPragmaFunction(
 	                                  binding.parameter_types);
 }
 
-//! Whether the type has no concrete type information (e.g. DECIMAL without width / scale) - ANY, UNKNOWN and INVALID
-//! are excluded, as casts to these have special meaning (e.g. for prepared statement parameters)
-static bool IsIncompleteCastTarget(const LogicalType &type) {
-	if (type.IsComplete()) {
-		return false;
-	}
-	return !TypeVisitor::Contains(type, [](const LogicalType &child) {
-		return child.id() == LogicalTypeId::ANY || child.id() == LogicalTypeId::UNKNOWN ||
-		       child.id() == LogicalTypeId::INVALID;
-	});
-}
-
 void FunctionBinder::CastToFunctionArguments(const Identifier &function_name, vector<LogicalType> &argument_types,
                                              vector<unique_ptr<Expression>> &children) {
 	// Varargs should be expanded by this point
@@ -1724,25 +1713,12 @@ void FunctionBinder::CastToFunctionArguments(const Identifier &function_name, ve
 		if (children[i]->GetReturnType().id() == LogicalTypeId::LAMBDA) {
 			continue;
 		}
-		const bool target_has_any = TypeVisitor::Contains(target_type, LogicalTypeId::ANY);
-		if (target_has_any && children[i]->GetReturnType().id() == LogicalTypeId::ARRAY &&
-		    target_type.id() == LogicalTypeId::LIST) {
-			// an array passed to a LIST(ANY) parameter is cast to a list of its child type
-			children[i] = BoundCastExpression::AddArrayCastToList(context, std::move(children[i]));
-		}
+		D_ASSERT(target_type.IsComplete());
 		// check if the type of child matches the type of function argument
 		// if not we need to add a cast
 		auto cast_result = RequiresCast(children[i]->GetReturnType(), target_type);
-		// except for one special case: if the function accepts ANY argument
-		// in that case we don't add a cast
 		if (cast_result == LogicalTypeComparisonResult::DIFFERENT_TYPES) {
-			if (target_has_any) {
-				// a type that is not concrete cannot be cast to (e.g. a NULL or a VARIANT passed to LIST(ANY)) - the
-				// function receives the argument as it is
-				target_type = children[i]->GetReturnType();
-				continue;
-			}
-			if (IsIncompleteCastTarget(target_type)) {
+			if (!target_type.IsComplete()) {
 				throw InternalException("Function %s has incomplete argument type %s - an argument cannot be cast "
 				                        "to it",
 				                        function_name, target_type);
@@ -2050,8 +2026,8 @@ static string PushCollations(ClientContext &context, BoundSimpleFunction &bound_
 	auto &argument_types = bound_function.GetArguments();
 	for (idx_t i = 0; i < children.size(); i++) {
 		auto &source_type = children[i]->GetReturnType();
-		auto &target_type = argument_types[i].IsComplete() ? argument_types[i] : source_type;
-		ExtractCollationFromType(source_type, target_type, collations);
+		D_ASSERT(argument_types[i].IsComplete());
+		ExtractCollationFromType(source_type, argument_types[i], collations);
 	}
 	if (is_index_key && collations.collation.empty() && collations.fields.empty()) {
 		// index keys only use explicit collations, comparison keys and the default collation would change them
@@ -2060,10 +2036,8 @@ static string PushCollations(ClientContext &context, BoundSimpleFunction &bound_
 	// push collations to the children
 	for (idx_t i = 0; i < children.size(); i++) {
 		auto &arg = children[i];
-		auto &arg_type = argument_types[i];
-		auto &target_type = arg_type.IsComplete() ? arg_type : arg->GetReturnType();
 		// apply the collations to the (possibly nested) varchar leaves of the argument type
-		auto collated_type = ApplyCollationToType(target_type, collations);
+		auto collated_type = ApplyCollationToType(argument_types[i], collations);
 		arg = BoundCastExpression::AddCastToType(context, std::move(arg), collated_type);
 		if (RequiresCollationPropagation(arg->GetReturnType())) {
 			// if this is a varchar type - propagate the collation
@@ -2072,7 +2046,7 @@ static string PushCollations(ClientContext &context, BoundSimpleFunction &bound_
 		// now push the actual collation handling
 		if (ExpressionBinder::PushCollation(context, arg, collated_type, type)) {
 			// Normalization can change field types, so do not cast back to the original argument type.
-			arg_type = arg->GetReturnType();
+			argument_types[i] = arg->GetReturnType();
 		}
 	}
 	return collations.collation;
@@ -2144,31 +2118,14 @@ static void VerifyBindArgumentTypes(const BoundScalarFunction &bound_function,
 	}
 }
 
-//! Incomplete argument types (e.g. a DECIMAL without width and scale) accept any type of that kind - resolve them to
-//! the type of the argument
-static void ResolveIncompleteArgumentTypes(BoundSimpleFunction &bound_function,
-                                           const vector<unique_ptr<Expression>> &arguments) {
-	auto &argument_types = bound_function.GetArguments();
-	for (idx_t i = 0; i < arguments.size() && i < argument_types.size(); i++) {
-		auto &source_type = arguments[i]->GetReturnType();
-		if (!IsIncompleteCastTarget(argument_types[i]) || source_type.id() != argument_types[i].id() ||
-		    !source_type.IsComplete()) {
-			continue;
-		}
-		argument_types[i] = source_type;
-	}
-}
-
+//! The types the function is called with, before the bind callback changes any of them
 static vector<LogicalType> CaptureLogicalArguments(const BoundSimpleFunction &function,
                                                    const vector<unique_ptr<Expression>> &arguments) {
 	D_ASSERT(function.GetArguments().size() == arguments.size());
-	vector<LogicalType> result;
-	result.reserve(arguments.size());
 	for (idx_t argument_index = 0; argument_index < arguments.size(); argument_index++) {
-		auto target_type = function.GetArguments()[argument_index];
-		result.push_back(target_type.IsComplete() ? target_type : arguments[argument_index]->GetReturnType());
+		D_ASSERT(function.GetArguments()[argument_index].IsComplete());
 	}
-	return result;
+	return function.GetArguments();
 }
 
 //! Let the signature resolve the return type from the resolved arguments of the call
@@ -2204,7 +2161,6 @@ FunctionBinder::ResolveScalarFunction(const FunctionBinding &binding, vector<uni
 	arguments = std::move(resolved.arguments);
 
 	bound_function.SetLogicalArguments(CaptureLogicalArguments(bound_function, arguments));
-	ResolveIncompleteArgumentTypes(bound_function, arguments);
 
 	// The resolver and the bind callback are called with arguments that are cast to the argument types of the function
 	const bool is_index_key = arguments_collated || (binder && binder->IsBindingIndexKey());

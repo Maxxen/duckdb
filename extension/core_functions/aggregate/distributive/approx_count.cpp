@@ -80,8 +80,6 @@ AggregateStateLayout ApproxCountDistinctGetStateType(AggregateLayoutInput &) {
 	AggregateStateLayout layout;
 	layout.type = ApproxCountDistinctExportType();
 	layout.total_state_size = AlignValue<idx_t>(sizeof(ApproxDistinctCountState));
-	// the sketch is of the hashes of the values, whatever their type
-	layout.independent_arguments.insert(0);
 	return layout;
 }
 

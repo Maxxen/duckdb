@@ -114,7 +114,7 @@ SELECT finalize(to_aggregate_state({'k': 3, 'values': [{'value': 5, 'count': 2},
 ----
 [5, 7]
 
-# ANY is a signature descriptor, not a general SQL type or a nested wildcard.
+# ANY is not a SQL type, nor a nested wildcard.
 statement error
 SELECT CAST(NULL AS ANY);
 ----
@@ -136,86 +136,37 @@ SELECT to_aggregate_state(0::BIGINT, 'count', ['ANY[]']);
 ANY
 
 statement error
-SELECT to_aggregate_state({'not_a_count': 1}, 'count', ['ANY']);
+SELECT to_aggregate_state({'not_a_count': 1}, 'count', ['BIGINT']);
 ----
 Unimplemented type for cast
 
 statement error
-SELECT to_aggregate_state(0::BIGINT, 'count', ['ANY'], [NULL, NULL]);
+SELECT to_aggregate_state(0::BIGINT, 'count', ['BIGINT'], [NULL, NULL]);
 ----
 exactly one entry per argument
 
 statement error
-SELECT to_aggregate_state([{'v0': 'a'}], 'count', ['ANY'], NULL,
+SELECT to_aggregate_state([{'v0': 'a'}], 'count', ['VARCHAR'], NULL,
                          [{'column': 1, 'order': 'ASC NULLS LAST'}]);
 ----
 out of range
 
-# ANY does not select a concrete overload or supply a missing template type.
-foreach aggregate sum bool_and count_star
+# ANY is not a type: a state is of an aggregate that is bound to concrete argument types.
+foreach aggregate sum bool_and count min max first list string_agg histogram
 
 statement error
 SELECT to_aggregate_state(0::BIGINT, '{aggregate}', ['ANY']);
 ----
-Could not re-bind exported aggregate
+can not be converted to a DuckDB Type
 
 endloop
 
-foreach aggregate min max first last any_value mode entropy histogram
-
-statement error
-SELECT to_aggregate_state(0::BIGINT, '{aggregate}', ['ANY']);
-----
-requires a concrete type for signature argument 1
-
-endloop
-
-# string_agg aggregates the strings its values are cast to
-statement error
-SELECT to_aggregate_state(0::BIGINT, 'string_agg', ['ANY']);
-----
-Type mismatch for exported aggregate string_agg
-
-# list can export its state, but ANY does not give it the type of its elements
-statement error
-SELECT to_aggregate_state(0::BIGINT, 'list', ['ANY']);
-----
-signature does not resolve a complete result type
-
-statement error
-SELECT to_aggregate_state(0::BIGINT, 'count', ['ANY', 'ANY']);
-----
-Could not re-bind exported aggregate
-
-# MIN/MAX-N also specialize the ANY input before creating their implementation.
-foreach aggregate min max
-
-statement error
-SELECT to_aggregate_state([1, 2], '{aggregate}', ['ANY', 'BIGINT'], [NULL, 2]);
-----
-requires a concrete type for signature argument 1
-
-endloop
-
-# A state-type callback must still produce complete result and state value types.
 foreach aggregate arg_min arg_max arg_min_null arg_max_null
-
-statement error
-SELECT to_aggregate_state({'arg': 1::BIGINT, 'by': 2::BIGINT}, '{aggregate}', ['ANY', 'BIGINT']);
-----
-signature does not resolve a complete result type
 
 statement error
 SELECT to_aggregate_state({'arg': 1::BIGINT, 'by': 2::BIGINT}, '{aggregate}', ['BIGINT', 'ANY']);
 ----
-signature does not resolve a complete state type
-
-# Ordered reconstruction must not use the supplied buffer to infer a signature.
-statement error
-SELECT to_aggregate_state([{'arg': 1::BIGINT, 'by': 2::BIGINT}], '{aggregate}',
-                         ['BIGINT', 'ANY'], NULL, [{'column': 1, 'order': 'ASC NULLS LAST'}]);
-----
-signature does not resolve a complete state type
+can not be converted to a DuckDB Type
 
 query II
 SELECT finalize(to_aggregate_state({'arg': 1::BIGINT, 'by': 2::BIGINT}, '{aggregate}', ['BIGINT', 'BIGINT'])),
@@ -225,13 +176,6 @@ SELECT finalize(to_aggregate_state({'arg': 1::BIGINT, 'by': 2::BIGINT}, '{aggreg
 1	1
 
 endloop
-
-statement error
-SELECT finalize(to_aggregate_state(
-    NULL::STRUCT(k UBIGINT, "values" STRUCT("value" BIGINT, count UBIGINT)[], "filter" UBIGINT[]),
-    'approx_top_k', ['ANY', 'BIGINT'], [NULL, 2]));
-----
-signature does not resolve a complete result type
 
 query I
 SELECT finalize(to_aggregate_state(

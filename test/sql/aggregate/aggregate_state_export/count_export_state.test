@@ -17,14 +17,14 @@ SELECT finalize(combine_aggr(s)) from (select COUNT(*) export_state AS s FROM ra
 ----
 15
 
-# COUNT retains one canonical state signature across concrete input types.
+# The state of a COUNT is of the type it counts: a state of another type is rebuilt from its value.
 query III rowsort
 WITH nullable_counts AS (
     SELECT g, count(v) EXPORT_STATE c, count(s) EXPORT_STATE t
     FROM (VALUES (0,1::BIGINT,'a'),(0,NULL,NULL),(0,1,'a'),(1,NULL,NULL),(2,2,'b')) input(g,v,s)
     GROUP BY g
 )
-SELECT g, finalize(c), finalize(combine(c, to_aggregate_state(t::BIGINT, 'count', ['ANY'])))
+SELECT g, finalize(c), finalize(combine(c, to_aggregate_state(t::BIGINT, 'count', ['BIGINT'])))
 FROM nullable_counts;
 ----
 0	2	4
@@ -37,14 +37,14 @@ WITH nullable_counts AS (
     FROM (VALUES (0,1::BIGINT,'a'),(0,NULL,NULL),(0,1,'a'),(1,NULL,NULL),(2,2,'b')) input(g,v,s)
     GROUP BY g
 )
-SELECT finalize(combine_aggr(to_aggregate_state(c::BIGINT, 'count', ['any']))),
+SELECT finalize(combine_aggr(to_aggregate_state(c::BIGINT, 'count', ['BIGINT']))),
        typeof(combine_aggr(c)), typeof(finalize(combine_aggr(c))) FROM nullable_counts;
 ----
 3	AGGREGATE_STATE	BIGINT
 
 query II
-SELECT finalize(to_aggregate_state(NULL::BIGINT, 'count', ['ANY'])),
-       finalize(combine_aggr(to_aggregate_state(NULL::BIGINT, 'count', ['ANY'])));
+SELECT finalize(to_aggregate_state(NULL::BIGINT, 'count', ['BIGINT'])),
+       finalize(combine_aggr(to_aggregate_state(NULL::BIGINT, 'count', ['BIGINT'])));
 ----
 NULL	0
 
@@ -57,17 +57,29 @@ SELECT finalize(to_aggregate_state(3::BIGINT, 'count', ['BIGINT'])),
 
 # The shared storage layout does not make COUNT and COUNT-star the same state.
 statement error
-SELECT combine(to_aggregate_state(1::BIGINT, 'count', ['ANY']),
+SELECT combine(to_aggregate_state(1::BIGINT, 'count', ['BIGINT']),
                to_aggregate_state(1::BIGINT, 'count_star', []));
 ----
 different functions
 
-# Ordered ANY arguments keep their buffered concrete type and order metadata.
+# Ordered states buffer the argument with its type and the order metadata.
 query I
 SELECT finalize(combine(
-    to_aggregate_state([{'v0': 'a', 'k': 2}, {'v0': NULL, 'k': 1}], 'count', ['ANY'], NULL,
+    to_aggregate_state([{'v0': 'a', 'k': 2}, {'v0': NULL, 'k': 1}], 'count', ['VARCHAR'], NULL,
                        [{'column': 1, 'order': 'DESC NULLS FIRST'}]),
-    to_aggregate_state([{'v0': 'b', 'k': 3}], 'count', ['ANY'], NULL,
+    to_aggregate_state([{'v0': 'b', 'k': 3}], 'count', ['VARCHAR'], NULL,
                        [{'column': 1, 'order': 'DESC NULLS FIRST'}])));
 ----
 2
+
+# States of counts of different types do not combine.
+statement error
+SELECT combine(a, b) FROM (SELECT count(i) EXPORT_STATE a, count(s) EXPORT_STATE b FROM (VALUES (1, 'x')) t(i, s));
+----
+created with different parameters
+
+# ANY is not a type an argument can be of.
+statement error
+SELECT to_aggregate_state(1::BIGINT, 'count', ['ANY']);
+----
+can not be converted to a DuckDB Type
