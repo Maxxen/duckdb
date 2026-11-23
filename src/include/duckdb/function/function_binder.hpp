@@ -13,6 +13,7 @@
 #include "duckdb/function/aggregate_function.hpp"
 #include "duckdb/function/window_function.hpp"
 #include "duckdb/function/function_set.hpp"
+#include "duckdb/function/type_cache.hpp"
 #include "duckdb/common/error_data.hpp"
 #include "duckdb/common/enums/order_type.hpp"
 #include "duckdb/common/optional.hpp"
@@ -452,6 +453,12 @@ public:
 	optional_ptr<const DecimalWidthLimit> decimal_width_limit;
 	//! Set when the arguments were bound before, so their collations are not pushed again
 	bool arguments_collated = false;
+	//! The types a binder outside of a query constructed
+	TypeCache type_cache;
+
+public:
+	//! The types this binder constructed: those of the query if it binds within one, else its own
+	TypeCache &GetTypeCache();
 
 public:
 	//! Overload selection: the cheapest overload of a function set that a call with the given arguments binds to.
@@ -689,22 +696,26 @@ private:
 	//! Whether an overload matches a call - with how the call binds to it if it does, and why not if it does not. With
 	//! explicit casts, an argument that cannot be implicitly cast to its parameter is accepted too
 	static std::variant<FunctionBinding, FunctionMismatch>
-	MatchOverload(optional_ptr<ClientContext> context, idx_t overload, shared_ptr<const SimpleFunction> function,
+	MatchOverload(TypeCache &cache, idx_t overload, shared_ptr<const SimpleFunction> function,
 	              const FunctionCallArguments &call, bool explicit_casts,
 	              optional_ptr<const DecimalWidthLimit> decimal_width_limit = nullptr);
+	//! SelectFunction, with the types constructed before
+	static FunctionBindResult SelectFunction(TypeCache &cache, const BaseFunctionSet &functions,
+	                                         const FunctionCallArguments &call, bool explicit_casts,
+	                                         optional_ptr<const DecimalWidthLimit> decimal_width_limit);
 	//! The function of a binding, bound to the types the binding resolved
 	template <class BOUND, class T>
 	static BOUND CreateBoundFunction(const FunctionBinding &binding);
 	//! The type a type name of a signature stands for, given what a call determines its type variables to be
-	static LogicalType BindTypeName(optional_ptr<ClientContext> context, const TypeName &name,
-	                                const FunctionSignature &signature, const FunctionVariables &variables);
+	static LogicalType BindTypeName(TypeCache &cache, const TypeName &name, const FunctionSignature &signature,
+	                                const FunctionVariables &variables);
 	//! The patterns of the parameters of a signature and of its return type, see BindTypePattern. Matching a call
 	//! is what binds a signature: these are for the check before it does, and for a function bound without one
-	static vector<LogicalType> BindParameterPatterns(optional_ptr<ClientContext> context,
-	                                                 const FunctionSignature &signature);
+	static vector<LogicalType> BindParameterPatterns(TypeCache &cache, const FunctionSignature &signature);
 	static LogicalType BindReturnPattern(optional_ptr<ClientContext> context, const FunctionSignature &signature);
+	static LogicalType BindReturnPattern(TypeCache &cache, const FunctionSignature &signature);
 	//! The type a signature returns for a call: ANY if it is only known after binding
-	static LogicalType BindReturnType(optional_ptr<ClientContext> context, const FunctionSignature &signature,
+	static LogicalType BindReturnType(TypeCache &cache, const FunctionSignature &signature,
 	                                  const FunctionVariables &variables);
 };
 

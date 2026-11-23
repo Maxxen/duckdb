@@ -35,6 +35,7 @@ add_library_unity(
   table_macro_function.cpp
   scalar_function.cpp
   table_function.cpp
+  type_cache.cpp
   type_name.cpp
   type_constructor.cpp
   window_function.cpp

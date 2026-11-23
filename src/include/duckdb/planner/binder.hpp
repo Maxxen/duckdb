@@ -18,6 +18,7 @@
 #include "duckdb/common/unordered_map.hpp"
 #include "duckdb/common/unordered_set.hpp"
 #include "duckdb/common/types/decimal.hpp"
+#include "duckdb/function/type_cache.hpp"
 #include "duckdb/parser/column_definition.hpp"
 #include "duckdb/parser/tableref/match_recognize_ref.hpp"
 #include "duckdb/parser/query_node.hpp"
@@ -237,6 +238,8 @@ struct GlobalBinderState {
 	optional_ptr<TableCatalogEntry> trigger_creation_table;
 	//! Name of the trigger being created (for error messages)
 	Identifier trigger_creation_name;
+	//! The types constructed while the functions of the query are bound
+	unique_ptr<TypeCache> type_cache;
 };
 
 //! Bind the parsed query tree to the actual columns present in the catalog.
@@ -447,6 +450,8 @@ public:
 	//! index while they are bound
 	DecimalWidthLimit GetDecimalWidthLimit() const;
 	optional_ptr<const DecimalWidthLimit> GetFixedDecimalWidthLimit() const;
+	//! The types constructed while the functions of the query are bound, shared by all binders of the query
+	TypeCache &GetTypeCache();
 	//! Binds decimals within the limit instead of the setting while it is set, the limit outlives the binding
 	void SetDecimalWidthLimit(optional_ptr<const DecimalWidthLimit> limit);
 	void SetBindingTrySubquery();

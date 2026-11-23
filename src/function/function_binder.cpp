@@ -27,12 +27,17 @@
 
 namespace duckdb {
 
-FunctionBinder::FunctionBinder(ClientContext &context_p) : binder(nullptr), context(context_p) {
+FunctionBinder::FunctionBinder(ClientContext &context_p) : binder(nullptr), context(context_p), type_cache(&context_p) {
 }
-FunctionBinder::FunctionBinder(Binder &binder_p) : binder(&binder_p), context(binder_p.context) {
+FunctionBinder::FunctionBinder(Binder &binder_p)
+    : binder(&binder_p), context(binder_p.context), type_cache(&binder_p.context) {
 }
 FunctionBinder::FunctionBinder(ClientContext &context_p, optional_ptr<const DecimalWidthLimit> decimal_width_limit_p)
-    : binder(nullptr), context(context_p), decimal_width_limit(decimal_width_limit_p) {
+    : binder(nullptr), context(context_p), decimal_width_limit(decimal_width_limit_p), type_cache(&context_p) {
+}
+
+TypeCache &FunctionBinder::GetTypeCache() {
+	return binder ? binder->GetTypeCache() : type_cache;
 }
 
 optional_ptr<const DecimalWidthLimit> FunctionBinder::FixedDecimalWidthLimit() const {
@@ -178,9 +183,8 @@ static LogicalType ValueVariableType(const TypeVariable &variable) {
 //! Binds a type name. What a variable of the signature stands for is up to the caller: bind_variable gives the
 //! type of a type variable, bind_value the value of a value variable - NULL if it is not known
 template <class BIND_VARIABLE, class BIND_VALUE>
-static LogicalType BindTypeNameInternal(optional_ptr<ClientContext> context, const TypeName &name,
-                                        const FunctionSignature &signature, const BIND_VARIABLE &bind_variable,
-                                        const BIND_VALUE &bind_value) {
+static LogicalType BindTypeNameInternal(TypeCache &cache, const TypeName &name, const FunctionSignature &signature,
+                                        const BIND_VARIABLE &bind_variable, const BIND_VALUE &bind_value) {
 	auto &identifier = name.GetName();
 	auto &arguments = name.GetArguments();
 	auto builtin_type = name.GetBuiltinType();
@@ -210,8 +214,7 @@ static LogicalType BindTypeNameInternal(optional_ptr<ClientContext> context, con
 			value = bind_value(argument.GetType().GetName());
 			has_unknown_value = has_unknown_value || value.IsNull();
 		} else if (argument.IsType()) {
-			value =
-			    Value::TYPE(BindTypeNameInternal(context, argument.GetType(), signature, bind_variable, bind_value));
+			value = Value::TYPE(BindTypeNameInternal(cache, argument.GetType(), signature, bind_variable, bind_value));
 		} else {
 			value = argument.GetLiteral().ToValue();
 		}
@@ -229,22 +232,9 @@ static LogicalType BindTypeNameInternal(optional_ptr<ClientContext> context, con
 		return LogicalType(kind);
 	}
 
-	if (context) {
-		auto entry =
-		    Catalog::GetEntry<TypeCatalogEntry>(*context, QualifiedName(identifier), OnEntryNotFound::RETURN_NULL);
-		if (entry) {
-			return entry->constructors.Bind(context, entry->user_type, bound_arguments);
-		}
-	} else {
-		// without a context only the built-in types are found
-		vector<pair<string, Value>> parameters;
-		for (auto &argument : bound_arguments) {
-			parameters.emplace_back(argument.GetName(), argument.GetValue());
-		}
-		auto type = DefaultTypeGenerator::TryDefaultBind(identifier.GetIdentifierName(), parameters);
-		if (type.id() != LogicalTypeId::INVALID) {
-			return type;
-		}
+	auto type = cache.Construct(identifier, std::move(bound_arguments));
+	if (type.id() != LogicalTypeId::INVALID) {
+		return type;
 	}
 
 	if (builtin_type == LogicalTypeId::LAMBDA || builtin_type == LogicalTypeId::TABLE) {
@@ -284,18 +274,20 @@ static LogicalType GetVariableType(const Identifier &variable, LogicalTypeId con
 }
 
 LogicalType FunctionBinder::BindTypeName(optional_ptr<ClientContext> context, const TypeName &name) {
-	return BindTypeNameInternal(context, name, FunctionSignature(), BindVariablePattern, BindValuePattern);
+	TypeCache cache(context);
+	return BindTypeNameInternal(cache, name, FunctionSignature(), BindVariablePattern, BindValuePattern);
 }
 
 LogicalType FunctionBinder::BindTypePattern(optional_ptr<ClientContext> context, const TypeName &name,
                                             const FunctionSignature &signature) {
-	return BindTypeNameInternal(context, name, signature, BindVariablePattern, BindValuePattern);
+	TypeCache cache(context);
+	return BindTypeNameInternal(cache, name, signature, BindVariablePattern, BindValuePattern);
 }
 
-LogicalType FunctionBinder::BindTypeName(optional_ptr<ClientContext> context, const TypeName &name,
-                                         const FunctionSignature &signature, const FunctionVariables &variables) {
+LogicalType FunctionBinder::BindTypeName(TypeCache &cache, const TypeName &name, const FunctionSignature &signature,
+                                         const FunctionVariables &variables) {
 	return BindTypeNameInternal(
-	    context, name, signature,
+	    cache, name, signature,
 	    [&](const Identifier &variable, LogicalTypeId constraint) {
 		    return GetVariableType(variable, constraint, variables);
 	    },
@@ -837,9 +829,10 @@ static idx_t MismatchRank(const FunctionMismatch::Reason &reason) {
 }
 
 std::variant<FunctionBinding, FunctionMismatch>
-FunctionBinder::MatchOverload(optional_ptr<ClientContext> context, idx_t overload,
-                              shared_ptr<const SimpleFunction> function, const FunctionCallArguments &call,
-                              bool explicit_casts, optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
+FunctionBinder::MatchOverload(TypeCache &cache, idx_t overload, shared_ptr<const SimpleFunction> function,
+                              const FunctionCallArguments &call, bool explicit_casts,
+                              optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
+	auto context = cache.GetContext();
 	// every mismatch is counted towards the distance, the most useful one is the reason
 	idx_t mismatches = 0;
 	optional<FunctionMismatch::Reason> reason;
@@ -950,7 +943,7 @@ FunctionBinder::MatchOverload(optional_ptr<ClientContext> context, idx_t overloa
 
 	// The shape matches: bind the types the signature declares by name. A type variable stands for any type until
 	// the arguments determine it, or for any type of its kind
-	auto parameter_types = BindParameterPatterns(context, sig);
+	auto parameter_types = BindParameterPatterns(cache, sig);
 	const bool has_variables = !sig.GetVariables().empty();
 	vector<VariableUse> variable_uses;
 	if (has_variables) {
@@ -985,7 +978,7 @@ FunctionBinder::MatchOverload(optional_ptr<ClientContext> context, idx_t overloa
 		if (unconstrained && arg_type.id() == LogicalTypeId::STRING_LITERAL) {
 			// a string literal can be cast to a type whatever its variables are determined to be
 			auto literal_target = BindTypeNameInternal(
-			    context, sig.GetParameter(param_idx).GetTypeName(), sig,
+			    cache, sig.GetParameter(param_idx).GetTypeName(), sig,
 			    [](const Identifier &, LogicalTypeId constraint) {
 				    return constraint == LogicalTypeId::INVALID ? LogicalType(LogicalType::VARCHAR)
 				                                                : LogicalType(constraint);
@@ -1047,7 +1040,7 @@ FunctionBinder::MatchOverload(optional_ptr<ClientContext> context, idx_t overloa
 			}
 			// an argument that is of the type already is taken as it is, the others are cast to that type
 			parameter_types[param_idx] = own_type.IsValid() ? call.GetArgument(own_type.GetIndex()).type
-			                                                : BindTypeName(context, param_type, sig, variables);
+			                                                : BindTypeName(cache, param_type, sig, variables);
 		}
 		// An argument passed as a type variable is cast to the type the variable is determined to be. An overload
 		// that takes any type is selected last, the more so the less the parameter says about the type
@@ -1059,7 +1052,7 @@ FunctionBinder::MatchOverload(optional_ptr<ClientContext> context, idx_t overloa
 			cost += TYPE_VARIABLE_COST - variable_uses[param_idx].depth;
 		}
 	}
-	binding.return_type = BindReturnType(context, sig, variables);
+	binding.return_type = BindReturnType(cache, sig, variables);
 	for (auto &variable : sig.GetVariables()) {
 		auto &variable_name = variable.GetName().GetIdentifierName();
 		if (variable.IsValue()) {
@@ -1082,6 +1075,13 @@ FunctionBinder::MatchOverload(optional_ptr<ClientContext> context, idx_t overloa
 FunctionBindResult FunctionBinder::SelectFunction(optional_ptr<ClientContext> context, const BaseFunctionSet &functions,
                                                   const FunctionCallArguments &call, bool explicit_casts,
                                                   optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
+	TypeCache cache(context);
+	return SelectFunction(cache, functions, call, explicit_casts, decimal_width_limit);
+}
+
+FunctionBindResult FunctionBinder::SelectFunction(TypeCache &type_cache, const BaseFunctionSet &functions,
+                                                  const FunctionCallArguments &call, bool explicit_casts,
+                                                  optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
 	// Look for duplicate names
 	identifier_set_t seen_names;
 	for (idx_t i = call.GetPositionalCount(); i < call.GetArgumentCount(); i++) {
@@ -1096,7 +1096,7 @@ FunctionBindResult FunctionBinder::SelectFunction(optional_ptr<ClientContext> co
 	vector<FunctionBinding> cheapest;
 	vector<FunctionMismatch> mismatches;
 	for (idx_t overload = 0; overload < functions.GetOverloadCount(); overload++) {
-		auto match = MatchOverload(context, overload, functions.GetSharedOverload(overload), call, explicit_casts,
+		auto match = MatchOverload(type_cache, overload, functions.GetSharedOverload(overload), call, explicit_casts,
 		                           decimal_width_limit);
 		auto binding = std::get_if<FunctionBinding>(&match);
 		if (!binding) {
@@ -1150,7 +1150,8 @@ FunctionBinding FunctionBinder::MatchFunction(optional_ptr<ClientContext> contex
                                               const FunctionCallArguments &call,
                                               optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
 	auto name = function->GetName();
-	auto match = MatchOverload(context, 0, std::move(function), call, true, decimal_width_limit);
+	TypeCache cache(context);
+	auto match = MatchOverload(cache, 0, std::move(function), call, true, decimal_width_limit);
 	auto binding = std::get_if<FunctionBinding>(&match);
 	if (!binding) {
 		vector<FunctionMismatch> mismatches;
@@ -1226,28 +1227,34 @@ static vector<LogicalType> PositionalTypes(const FunctionSignature &signature, c
 	                                                              signature.GetPositionalParameterCount()));
 }
 
-vector<LogicalType> FunctionBinder::BindParameterPatterns(optional_ptr<ClientContext> context,
-                                                          const FunctionSignature &signature) {
+vector<LogicalType> FunctionBinder::BindParameterPatterns(TypeCache &cache, const FunctionSignature &signature) {
 	vector<LogicalType> result;
 	result.reserve(signature.GetParameterCount());
 	for (auto &param : signature.GetParameters()) {
-		result.push_back(BindTypePattern(context, param.GetTypeName(), signature));
+		result.push_back(
+		    BindTypeNameInternal(cache, param.GetTypeName(), signature, BindVariablePattern, BindValuePattern));
 	}
 	return result;
 }
 
 LogicalType FunctionBinder::BindReturnPattern(optional_ptr<ClientContext> context, const FunctionSignature &signature) {
-	auto &return_type = signature.GetReturnType();
-	return return_type.IsType() ? BindTypePattern(context, return_type.GetTypeName(), signature)
-	                            : BindReturnType(context, signature, FunctionVariables());
+	TypeCache cache(context);
+	return BindReturnPattern(cache, signature);
 }
 
-LogicalType FunctionBinder::BindReturnType(optional_ptr<ClientContext> context, const FunctionSignature &signature,
+LogicalType FunctionBinder::BindReturnPattern(TypeCache &cache, const FunctionSignature &signature) {
+	auto &return_type = signature.GetReturnType();
+	return return_type.IsType() ? BindTypeNameInternal(cache, return_type.GetTypeName(), signature, BindVariablePattern,
+	                                                   BindValuePattern)
+	                            : BindReturnType(cache, signature, FunctionVariables());
+}
+
+LogicalType FunctionBinder::BindReturnType(TypeCache &cache, const FunctionSignature &signature,
                                            const FunctionVariables &variables) {
 	auto &return_type = signature.GetReturnType();
 	switch (return_type.GetKind()) {
 	case ReturnType::Kind::TYPE:
-		return BindTypeName(context, return_type.GetTypeName(), signature, variables);
+		return BindTypeName(cache, return_type.GetTypeName(), signature, variables);
 	case ReturnType::Kind::ANY:
 		return LogicalType::ANY;
 	case ReturnType::Kind::TABLE:
@@ -1304,7 +1311,7 @@ FunctionBinder::SelectFunctionFromArguments(const BaseFunctionSet &functions,
 	const auto implicit_names = AnyOverloadSupportsImplicitArgumentNames(functions);
 	if (is_valid_call) {
 		// Yes. Let's try to bind
-		auto result = SelectFunction(context, functions, {positional, named}, false, FixedDecimalWidthLimit());
+		auto result = SelectFunction(GetTypeCache(), functions, {positional, named}, false, FixedDecimalWidthLimit());
 		if (result) {
 			return result.GetBinding();
 		}
@@ -1336,7 +1343,7 @@ FunctionBinder::SelectFunctionFromArguments(const BaseFunctionSet &functions,
 		}
 		if (TrySplitArguments(arguments, positional, named)) {
 			auto retry_result =
-			    SelectFunction(context, functions, {positional, named}, false, FixedDecimalWidthLimit());
+			    SelectFunction(GetTypeCache(), functions, {positional, named}, false, FixedDecimalWidthLimit());
 			if (retry_result) {
 				return retry_result.GetBinding();
 			}
@@ -1572,7 +1579,7 @@ FunctionBinder::BindTableFunction(const TableFunctionSet &functions,
                                   vector<unique_ptr<Expression>> &positional_arguments,
                                   vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments, ErrorData &error) {
 	VerifyNamedArgumentsAccepted(functions, named_arguments);
-	auto selection = SelectFunction(context, functions, {positional_arguments, named_arguments});
+	auto selection = SelectFunction(GetTypeCache(), functions, {positional_arguments, named_arguments}, false, nullptr);
 	if (!selection) {
 		error = selection.GetError();
 		return nullptr;
@@ -1600,7 +1607,7 @@ FunctionBinder::BindTableInOutFunction(const TableFunctionSet &functions, const 
 	for (idx_t i = 0; i < input_types.size(); i++) {
 		input_arguments.push_back(make_uniq<BoundReferenceExpression>(input_types[i], storage_t(i)));
 	}
-	auto selection = SelectFunction(context, functions, {input_arguments, named_arguments});
+	auto selection = SelectFunction(GetTypeCache(), functions, {input_arguments, named_arguments}, false, nullptr);
 	if (!selection) {
 		error = selection.GetError();
 		return nullptr;
@@ -1635,7 +1642,7 @@ unique_ptr<BoundPragmaInfo> FunctionBinder::BindPragmaFunction(
     const PragmaFunctionSet &functions, vector<unique_ptr<Expression>> &positional_arguments,
     vector<pair<Identifier, unique_ptr<Expression>>> &named_arguments, ErrorData &error) {
 	VerifyNamedArgumentsAccepted(functions, named_arguments);
-	auto selection = SelectFunction(context, functions, {positional_arguments, named_arguments});
+	auto selection = SelectFunction(GetTypeCache(), functions, {positional_arguments, named_arguments}, false, nullptr);
 	if (!selection) {
 		error = selection.GetError();
 		return nullptr;
@@ -1846,7 +1853,7 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunctionCa
 	// when needed to determine the return type. Preserve result collation without invoking bind callbacks.
 	if (bound_function.GetNullHandling() == FunctionNullHandling::DEFAULT_NULL_HANDLING) {
 		// the type the function declares, whatever the arguments determine it to be
-		const auto return_type = BindReturnPattern(&context, bound_function.GetSignature());
+		const auto return_type = BindReturnPattern(GetTypeCache(), bound_function.GetSignature());
 		if (HasUntypedNullArgument(regular_args, keyword_args)) {
 			return make_uniq<BoundConstantExpression>(Value(NullReturnType(return_type)), std::move(alias),
 			                                          query_location);

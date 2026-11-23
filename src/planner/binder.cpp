@@ -313,6 +313,14 @@ optional_ptr<const DecimalWidthLimit> Binder::GetFixedDecimalWidthLimit() const 
 	return decimal_width_limit;
 }
 
+TypeCache &Binder::GetTypeCache() {
+	auto &type_cache = global_binder_state->type_cache;
+	if (!type_cache) {
+		type_cache = make_uniq<TypeCache>(&context);
+	}
+	return *type_cache;
+}
+
 void Binder::SetDecimalWidthLimit(optional_ptr<const DecimalWidthLimit> limit) {
 	decimal_width_limit = limit;
 }

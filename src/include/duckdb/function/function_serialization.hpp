@@ -174,6 +174,7 @@ public:
 	                                                          vector<LogicalType> &arguments,
 	                                                          const LogicalType &return_type) {
 		optional<FunctionBinding> result;
+		TypeCache cache(&context);
 		for (idx_t offset = 0; offset < functions.GetOverloadCount(); offset++) {
 			auto &signature = functions.GetOverload(offset).GetSignature();
 			auto parameter_count = signature.GetParameterCount();
@@ -185,8 +186,8 @@ public:
 			}
 			vector<LogicalType> call_types = arguments;
 			call_types.resize(parameter_count, LogicalType::UNKNOWN);
-			auto match = FunctionBinder::MatchOverload(&context, offset, functions.GetSharedOverload(offset),
-			                                           {call_types}, false);
+			auto match =
+			    FunctionBinder::MatchOverload(cache, offset, functions.GetSharedOverload(offset), {call_types}, false);
 			auto binding = std::get_if<FunctionBinding>(&match);
 			if (!binding || binding->return_type.id() != return_type.id()) {
 				continue;
