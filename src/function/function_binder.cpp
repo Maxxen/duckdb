@@ -636,10 +636,6 @@ void FunctionBinder::CastToFunctionArguments(const Identifier &function_name, co
 			    "Function %s returned a STRING_LITERAL or INTEGER_LITERAL type - return an explicit type instead",
 			    function_name);
 		}
-		if (children[i]->GetReturnType().id() == LogicalTypeId::UNKNOWN && !target_type.IsComplete()) {
-			// bind callbacks only see concrete types - an unresolved parameter is bound again at EXECUTE
-			throw ParameterNotResolvedException();
-		}
 		target_type.Verify();
 		// don't cast lambda children, their slot only ever holds a placeholder
 		if (children[i]->GetReturnType().id() == LogicalTypeId::LAMBDA) {
@@ -761,7 +757,8 @@ static bool HasNullConstantArgument(ClientContext &context, vector<unique_ptr<Ex
 static void PropagateReturnCollation(BoundSimpleFunction &bound_function, const FunctionProperties &props,
                                      const vector<unique_ptr<Expression>> &children, const string &pushed_collation);
 
-//! The type of the NULL constant a function call is folded to - SQLNULL if the return type could not be determined
+//! The type of the NULL constant a function call is folded to - SQLNULL if the return type is left to the bind
+//! callback, which is not invoked
 static LogicalType NullReturnType(const LogicalType &return_type) {
 	return return_type.IsComplete() ? return_type : LogicalType::SQLNULL;
 }

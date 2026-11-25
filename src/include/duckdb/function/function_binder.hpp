@@ -104,20 +104,31 @@ struct ArgumentLayout {
 //!    positional argument is passed to the parameter at its position or to "*args", a named argument to the
 //!    parameter of its name or to "**kwargs", and every parameter the call leaves out has a default.
 //!
-//! 2. Types. Every argument has to be passable to the parameter that receives it:
-//!    - A parameter whose type uses no variable takes an argument that casts implicitly to that type.
-//!    - A parameter whose type uses a variable takes an argument whose type is an instance of the declared type, or
-//!      casts implicitly to the instance that is made of its own parts: INTEGER[3] is passed to T[] as INTEGER[],
-//!      and INTEGER to DECIMAL(W, S) as DECIMAL(10, 0). Such an argument says what the variables are.
-//!    - An argument that is not an instance of a type with arguments (T[], DECIMAL(W, S), FLOAT[N]) is deferred: it
-//!      says nothing about the variables, and is passed if it casts implicitly to the type of the parameter with the
-//!      variables as the other arguments determine them. A VARIANT and a string literal are passed to T[] this way.
-//!      Nothing is deferred to a type variable by itself, constrained or not, to a type that uses ANY, which is the
-//!      type of the argument itself, or to a value variable.
-//!    - A NULL and an unresolved parameter say nothing about the variables either, and are passed as they are.
-//!    A type variable is the promotion of the types the arguments say it is, a value variable the one value they
-//!    say it is. An overload is not a candidate if the arguments disagree about a variable, or do not determine
-//!    every variable of the return type and of the parameters that receive an argument.
+//! 2. Types. The type of every argument is paired with the type of the parameter that receives it, part by part,
+//!    and says what the variables are that the parameter has in the place of its parts: INTEGER[3] passed to T[]
+//!    says that T is INTEGER, and so does INTEGER[] passed to T[N]. A type of another kind than the parameter's
+//!    says nothing: a MAP passed to T[] is not a list of its keys. A type variable is the promotion of the types
+//!    the arguments say it is, in the order of the arguments. A NULL and an unresolved parameter take the other
+//!    type in the promotion, wherever they are passed: [1, NULL, 2::TINYINT] is a TINYINT[] like [1, 2::TINYINT].
+//!    So a type variable is the type of a NULL if only NULLs are passed as it, and not determined if an unresolved
+//!    parameter is passed as it with nothing but NULLs and unresolved parameters. The promoted type is then made
+//!    final: a literal becomes its type, and a constrained variable has to be of its kind. A value variable is the
+//!    one value the arguments say it is, and not determined if none says one. An overload is not a candidate if
+//!    the arguments disagree about a variable, or promote a constrained variable out of its kind (two enums are
+//!    promoted to VARCHAR). It needs an unresolved parameter (step 4) if that parameter is passed as a variable
+//!    that is not determined and that is shared: the type of the parameter of another argument of the call uses
+//!    it as well, or the return type. Every argument then has to be passable to its parameter:
+//!    - As an instance of the type of the parameter: it casts implicitly to that type with the variables as the
+//!      argument itself says they are. INTEGER[3] is passed to T[] as INTEGER[], INTEGER to DECIMAL(W, S) as
+//!      DECIMAL(10, 0), and any argument to a type that uses no variable as that type.
+//!    - Else, deferred, to a type with arguments (T[], DECIMAL(W, S), FLOAT[N]): it casts implicitly to that type
+//!      with the variables as all the arguments determine them. A VARIANT and a string literal are passed to T[]
+//!      this way. Nothing is deferred to a type variable or a value variable by itself, and ANY is what the
+//!      argument itself has in its place.
+//!    - A NULL and an unresolved parameter are passed as the type of the parameter with the variables as the
+//!      arguments determine them - and as they are, if a variable of that type is not determined.
+//!    An overload is not a candidate if a variable is not determined that the return type uses, or the type that
+//!    an argument is deferred to.
 //!
 //! 3. Rank. Every candidate has a rank of six numbers. Two candidates are compared number by number in the order of
 //!    the rules below, and the first difference decides:
@@ -140,9 +151,15 @@ struct ArgumentLayout {
 //!    Rules 4 to 6 count a parameter once for every argument of the call it receives, and not for a default. When the
 //!    arguments are cast explicitly, nothing is ranked.
 //!
-//! 4. Result. The candidate that ranks before every other one is selected. Several candidates of the best rank make
-//!    the call ambiguous, which is an error - unless a positional argument is an unresolved parameter: all
-//!    candidates of such a call rank the same, and the call is bound again once the parameter has a type.
+//! 4. Result. If an overload needs an unresolved parameter, the call is unresolved: it is bound again once the
+//!    parameter has a type, and no other overload is selected in its place, as that type may make this overload
+//!    the better match, or no match. That holds once the shape of the overload fits and the arguments agree about
+//!    the variables, whether or not its other arguments can be passed: they are only checked against the types the
+//!    parameter determines. Else the candidate that ranks before every other one is selected. Several candidates of
+//!    the best rank make the call ambiguous, which is an error - unless a positional argument is an unresolved
+//!    parameter: all candidates of such a call rank the same, and the call is unresolved as well. So is a call
+//!    whose selected candidate passes an unresolved parameter as it is: only a function that is bound to the types
+//!    of its arguments alone, such as a comparison, receives one.
 struct FunctionRank {
 	//! Rule 1: the arguments that are only cast implicitly because of the old_implicit_casting setting
 	idx_t legacy_casts = 0;

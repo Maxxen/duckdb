@@ -332,11 +332,11 @@ static bool EqualMatchesUnion(const LogicalType &left, const LogicalType &right)
 
 static bool CombineNullOrUnknown(LogicalTypeResolver &, const LogicalType &left, const LogicalType &right,
                                  LogicalType &result) {
-	// NULL/unknown (parameter) types always take the other type
+	// NULL/unknown (parameter) types always take the other type, as it is: a literal stays a literal
 	if (left.id() == LogicalTypeId::SQLNULL || right.id() == LogicalTypeId::SQLNULL) {
-		result = LogicalType::NormalizeType(left.id() == LogicalTypeId::SQLNULL ? right : left);
+		result = left.id() == LogicalTypeId::SQLNULL ? right : left;
 	} else {
-		result = LogicalType::NormalizeType(left.id() == LogicalTypeId::UNKNOWN ? right : left);
+		result = left.id() == LogicalTypeId::UNKNOWN ? right : left;
 	}
 	return true;
 }

@@ -31,6 +31,8 @@ BindResult ExpressionBinder::BindExpression(CaseExpression &expr, idx_t depth) {
 			    return_type.ToString(), then_type.ToString());
 		}
 	}
+	// a literal that only met NULLs is still a literal
+	return_type = LogicalType::NormalizeType(return_type);
 
 	// bind all the individual components of the CASE statement
 	auto result = make_uniq<BoundCaseExpression>(return_type);

@@ -5,7 +5,7 @@
 statement error
 SELECT array_inner_product('foo', 'bar');
 ----
-Cannot deduce value 'N', it is not determined by the arguments
+Argument 1 of type STRING_LITERAL cannot be implicitly cast to FLOAT[N]
 
 statement error
 SELECT array_inner_product([1,2,3]::INT[3], ['a','b','c']::VARCHAR[3]);

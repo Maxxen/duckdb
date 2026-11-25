@@ -72,6 +72,13 @@ string FunctionMismatch::TemplateDeduction::ToString(const SimpleFunction &funct
 		                          inferred_values[0].ToString(), inferred_values[1].ToString());
 	}
 	auto &steps = inferred_types;
+	if (steps.size() == 1) {
+		// the arguments agree about the type, which is not of the kind the variable is constrained to
+		auto constraint = function.GetSignature().GetConstraint(Identifier(template_name));
+		return StringUtil::Format(
+		    "Cannot deduce template type '%s', it was inferred to be '%s', which is not of kind %s", template_name,
+		    steps[0].ToString(), EnumUtil::ToString(constraint));
+	}
 	// the inferred types are the first one, then pairs of a type and what the template is promoted to with it
 	auto msg = StringUtil::Format("Cannot deduce template type '%s', it was inferred to be:\n", template_name);
 	msg += StringUtil::Format("  - '%s', from first occurrence\n", steps[0].ToString());

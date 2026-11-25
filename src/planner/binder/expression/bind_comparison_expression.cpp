@@ -91,6 +91,8 @@ bool BoundComparisonExpression::TryBindComparison(ClientContext &context, const 
 			return false;
 		}
 	}
+	// a literal that is compared with a NULL is still a literal
+	res = LogicalType::NormalizeType(res);
 	switch (res.id()) {
 	case LogicalTypeId::DECIMAL: {
 		// result is a decimal: we need the maximum width and the maximum scale over width

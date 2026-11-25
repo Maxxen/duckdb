@@ -9,6 +9,7 @@
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/planner/collation_binding.hpp"
 #include "duckdb/catalog/catalog.hpp"
+#include "duckdb/catalog/default/default_types.hpp"
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
@@ -307,6 +308,11 @@ LogicalTypeId FunctionSignature::GetConstraint(const Identifier &variable) const
 }
 
 FunctionSignature &FunctionSignature::AddVariable(Identifier name, TypeVariable::Kind kind) {
+	const bool is_any = name == TypeName(LogicalTypeId::ANY).GetName();
+	if (is_any || DefaultTypeGenerator::GetDefaultType(name) != LogicalTypeId::INVALID) {
+		// a type name is then either a variable or a type, whatever a site looks it up as first
+		throw InvalidInputException("Variable %s is named like a built-in type", name.GetIdentifierName());
+	}
 	auto variable = FindVariable(name);
 	if (variable && variable->GetKind() != kind) {
 		throw InternalException("Variable %s is declared twice, as different kinds of variable",
