@@ -190,14 +190,18 @@ static LogicalType BindSignatureType(TypeCache &cache, const TypeName &name, con
 //===--------------------------------------------------------------------===//
 // Type variables
 //===--------------------------------------------------------------------===//
-//! What it costs to pass an argument as a type variable that stands for any type, on top of the cast to the type the
-//! variable is determined to be: more than any cast, so that an overload that declares the type is preferred
-static constexpr idx_t TYPE_VARIABLE_COST = 1000000;
+//! What CastFunctionSet::ImplicitCastCost returns for a cast to VARCHAR that only the old_implicit_casting setting
+//! allows: more than any other cast costs
+static constexpr int64_t OLD_IMPLICIT_CAST_COST = 10000000000;
 //! A NULL that is passed as a type variable that stands for any type: preferred over a NULL of a declared type
 static constexpr idx_t NULL_VARIABLE_COST = 5;
 //! A string literal that is passed as a type made of parts the other arguments determine: what the cast rules cost
 //! a string literal to a type that is not VARCHAR
 static constexpr idx_t STRING_LITERAL_COST = 20;
+//! Whether a NULL or an unresolved parameter that comes first is skipped when the types of a type variable are
+//! unified, as it is in every other position. false is upstream's behaviour: the next type is promoted with it, which
+//! turns a literal into its default type. Kept until a setting can select the new behaviour
+static constexpr bool SKIP_LEADING_UNTYPED_ARGUMENT = false;
 
 //! How a type name uses the type variables of its signature
 struct VariableUse {
@@ -205,11 +209,14 @@ struct VariableUse {
 	bool uses_variable = false;
 	//! Whether it uses ANY: a type variable of its own each time it occurs, that stands for any type
 	bool uses_any = false;
-	//! Whether it uses a type variable that stands for any type, and how deep the outermost such use is nested
+	//! Whether it uses a type variable that stands for any type
 	bool unconstrained = false;
-	idx_t depth = 0;
 	//! Whether it uses a value variable
 	bool uses_value = false;
+	//! What the name declares, as the rank counts it: 2 for every type it names and 1 for every constrained type
+	//! variable (FunctionRank rule 5), 2 for every literal and 1 for every value variable (rule 6)
+	idx_t structure = 0;
+	idx_t values = 0;
 
 	//! Whether it uses a variable the signature declares
 	bool UsesVariable() const {
@@ -221,12 +228,13 @@ struct VariableUse {
 	}
 };
 
-static VariableUse GetVariableUse(const FunctionSignature &signature, const TypeName &name, idx_t depth = 0) {
+static VariableUse GetVariableUse(const FunctionSignature &signature, const TypeName &name) {
 	VariableUse use;
 	if (!name.HasArguments()) {
 		const bool is_any = name.IsBuiltinType(LogicalTypeId::ANY);
 		auto variable = is_any ? nullptr : signature.FindVariable(name.GetName());
 		if (!variable && !is_any) {
+			use.structure = 2;
 			return use;
 		}
 		if (variable && variable->IsValue()) {
@@ -235,24 +243,27 @@ static VariableUse GetVariableUse(const FunctionSignature &signature, const Type
 		}
 		use.uses_any = is_any;
 		use.uses_variable = !is_any;
-		if (is_any || signature.GetConstraint(name.GetName()) == LogicalTypeId::INVALID) {
-			use.unconstrained = true;
-			use.depth = depth;
-		}
+		use.unconstrained = is_any || signature.GetConstraint(name.GetName()) == LogicalTypeId::INVALID;
+		use.structure = use.unconstrained ? 0 : 1;
 		return use;
 	}
+	use.structure = 2;
 	for (auto &argument : name.GetArguments()) {
 		if (!argument.IsType()) {
+			use.values += 2;
 			continue;
 		}
-		auto part = GetVariableUse(signature, argument.GetType(), depth + 1);
+		auto part = GetVariableUse(signature, argument.GetType());
+		if (part.uses_value && !argument.GetType().HasArguments()) {
+			// a value variable
+			use.values += 1;
+		}
 		use.uses_variable = use.uses_variable || part.uses_variable;
 		use.uses_any = use.uses_any || part.uses_any;
 		use.uses_value = use.uses_value || part.uses_value;
-		if (part.unconstrained && (!use.unconstrained || part.depth < use.depth)) {
-			use.unconstrained = true;
-			use.depth = part.depth;
-		}
+		use.unconstrained = use.unconstrained || part.unconstrained;
+		use.structure += part.structure;
+		use.values += part.values;
 	}
 	return use;
 }
@@ -370,16 +381,19 @@ UnifyBindings(optional_ptr<ClientContext> context, const FunctionSignature &sign
 			auto said_type = TypeValue::GetType(binding.value);
 			const bool says_nothing =
 			    said_type.id() == LogicalTypeId::SQLNULL || said_type.id() == LogicalTypeId::UNKNOWN;
+			// the first argument that says a type sets it, instead of being promoted with the ones that said nothing
+			const bool replaces_untyped = SKIP_LEADING_UNTYPED_ARGUMENT && !says_nothing &&
+			                              (type.id() == LogicalTypeId::SQLNULL || type.id() == LogicalTypeId::UNKNOWN);
 			bool is_unified = true;
-			if (type.id() == LogicalTypeId::INVALID) {
+			if (type.id() == LogicalTypeId::INVALID || replaces_untyped) {
 				first_type = said_type;
 				type = said_type;
-			} else if (says_nothing || said_type == type) {
+			} else if (says_nothing || said_type.EqualsIncludingCollation(type)) {
 				continue;
 			} else {
 				LogicalType promoted;
 				is_unified = TryUnifyTypes(context, type, said_type, promoted, decimal_width_limit);
-				if (is_unified && promoted != type) {
+				if (is_unified && !promoted.EqualsIncludingCollation(type)) {
 					promotions.push_back(said_type);
 					promotions.push_back(promoted);
 					type = std::move(promoted);
@@ -505,6 +519,8 @@ static optional<LogicalType> InstantiateParameters(TypeCache &cache, const Funct
 	}
 
 	auto &instance = decimal_type.id() == LogicalTypeId::INVALID ? type : decimal_type;
+	// whether the type is of the kind the name constructs, instead of being passed as a type of it
+	const bool is_kind = kind == LogicalTypeId::INVALID ? name.GetName() == type.GetAlias() : type.id() == kind;
 	bool has_labels = false;
 	for (auto &argument : arguments) {
 		has_labels = has_labels || !argument.GetLabel().empty();
@@ -523,7 +539,12 @@ static optional<LogicalType> InstantiateParameters(TypeCache &cache, const Funct
 		if (parameter_idx.IsValid()) {
 			auto parameter = instance.GetParameter(parameter_idx.GetIndex());
 			value = InstantiateArgument(cache, signature, argument, parameter, call_argument, bindings);
-			is_same = value && parameter_idx.GetIndex() == i && IsSameParameter(*value, parameter);
+			const bool is_parameter = value && IsSameParameter(*value, parameter);
+			if (is_kind && !argument.IsType() && !is_parameter) {
+				// a value the name declares has to be the one a type of its kind has
+				return nullopt;
+			}
+			is_same = is_parameter && parameter_idx.GetIndex() == i;
 		} else if (!argument.IsType()) {
 			// what the type does not say has to be declared, e.g. the size of the array a list is passed as
 			value = argument.GetLiteral().ToValue();
@@ -537,7 +558,13 @@ static optional<LogicalType> InstantiateParameters(TypeCache &cache, const Funct
 	if (is_instance) {
 		return instance;
 	}
-	auto result = cache.Construct(name.GetName(), std::move(bound_arguments));
+	LogicalType result;
+	try {
+		result = cache.Construct(name.GetName(), std::move(bound_arguments));
+	} catch (const BinderException &) {
+		// the parts of the type are not what the constructor of the name takes
+		return nullopt;
+	}
 	if (result.id() == LogicalTypeId::INVALID) {
 		return nullopt;
 	}
@@ -632,8 +659,12 @@ struct ArgumentMatch {
 	//! what the argument is passed as, unless the arguments determine a type variable to be something else. Invalid
 	//! if that is up to the other arguments
 	LogicalType type;
-	//! What passing the argument costs, negative if it is not of a type the parameter stands for
+	//! What the implicit cast of the argument costs, negative if it is not of a type the parameter stands for
 	int64_t cost = 0;
+	//! Whether it is passed through ANY or an unconstrained type variable, which a NULL is not
+	bool is_unconstrained = false;
+	//! How the type of the parameter uses the variables
+	VariableUse use;
 };
 
 //! Match an argument against the type its parameter declares. This is about the argument alone: what it costs is
@@ -645,7 +676,8 @@ static ArgumentMatch MatchArgument(TypeCache &cache, const FunctionSignature &si
                                    VariableBindings &bindings) {
 	auto context = cache.GetContext();
 	ArgumentMatch match;
-	const auto use = GetVariableUse(sig, name);
+	match.use = GetVariableUse(sig, name);
+	auto &use = match.use;
 	if (!use.IsGeneric()) {
 		match.type = BindDeclaredType(cache, name, sig);
 		match.cost = ImplicitCastCost(context, arg_type, match.type);
@@ -697,10 +729,7 @@ static ArgumentMatch MatchArgument(TypeCache &cache, const FunctionSignature &si
 		}
 		return match;
 	}
-	if (use.unconstrained && !is_null) {
-		// an overload that takes any type is selected last, the more so the less the parameter says about the type
-		match.cost += TYPE_VARIABLE_COST - use.depth;
-	}
+	match.is_unconstrained = use.unconstrained && !is_null;
 	return match;
 }
 
@@ -771,128 +800,8 @@ static void SubstituteVariables(TypeCache &cache, const FunctionSignature &sig, 
 }
 
 //===--------------------------------------------------------------------===//
-// Specificity
+// Matching
 //===--------------------------------------------------------------------===//
-//! How much a type name, or an overload, says about what it takes, compared to another one
-enum class Specificity : uint8_t { EQUAL, MORE, LESS, INCOMPARABLE };
-
-//! More specific if no part is less specific and one part is more specific
-static Specificity CombineSpecificity(Specificity left, Specificity right) {
-	if (left == Specificity::EQUAL || left == right) {
-		return right;
-	}
-	return right == Specificity::EQUAL ? left : Specificity::INCOMPARABLE;
-}
-
-//! The kind of type a type name stands for: the kind a type variable is constrained to, or the built-in type of
-//! the name. INVALID if it is neither
-static LogicalTypeId GetTypeKind(const FunctionSignature &signature, const TypeName &name, bool &is_variable) {
-	auto variable = name.HasArguments() ? nullptr : signature.FindVariable(name.GetName());
-	is_variable = variable && !variable->IsValue();
-	if (is_variable) {
-		return signature.GetConstraint(name.GetName());
-	}
-	return DefaultTypeGenerator::GetDefaultType(name.GetName());
-}
-
-//! Whether a type name says more than another one about the types it stands for: a type says more than a type
-//! variable, a type variable of a kind more than one of any type, DECIMAL(W, S) more than DECIMAL, and
-//! DECIMAL(W, 0) more than DECIMAL(W, S)
-static Specificity CompareSpecificity(const FunctionSignature &left_signature, const TypeName &left,
-                                      const FunctionSignature &right_signature, const TypeName &right) {
-	bool left_is_variable, right_is_variable;
-	auto left_kind = GetTypeKind(left_signature, left, left_is_variable);
-	auto right_kind = GetTypeKind(right_signature, right, right_is_variable);
-	const bool left_is_any =
-	    left.IsBuiltinType(LogicalTypeId::ANY) || (left_is_variable && left_kind == LogicalTypeId::INVALID);
-	const bool right_is_any =
-	    right.IsBuiltinType(LogicalTypeId::ANY) || (right_is_variable && right_kind == LogicalTypeId::INVALID);
-	if (left_is_any || right_is_any) {
-		if (left_is_any && right_is_any) {
-			return Specificity::EQUAL;
-		}
-		return left_is_any ? Specificity::LESS : Specificity::MORE;
-	}
-	if (left_is_variable || right_is_variable) {
-		// a type variable of a kind, and a type of that kind
-		if (left_kind != right_kind) {
-			return Specificity::INCOMPARABLE;
-		}
-		if (left_is_variable && right_is_variable) {
-			return Specificity::EQUAL;
-		}
-		return left_is_variable ? Specificity::LESS : Specificity::MORE;
-	}
-	if (left.GetName() != right.GetName()) {
-		return Specificity::INCOMPARABLE;
-	}
-	auto &left_arguments = left.GetArguments();
-	auto &right_arguments = right.GetArguments();
-	if (left_arguments.empty() || right_arguments.empty()) {
-		// the name alone is every type of the name
-		if (left_arguments.empty() && right_arguments.empty()) {
-			return Specificity::EQUAL;
-		}
-		return left_arguments.empty() ? Specificity::LESS : Specificity::MORE;
-	}
-	if (left_arguments.size() != right_arguments.size()) {
-		return Specificity::INCOMPARABLE;
-	}
-	auto result = Specificity::EQUAL;
-	for (idx_t i = 0; i < left_arguments.size(); i++) {
-		auto &left_argument = left_arguments[i];
-		auto &right_argument = right_arguments[i];
-		const bool left_is_value = FindValueVariable(left_argument, left_signature);
-		const bool right_is_value = FindValueVariable(right_argument, right_signature);
-		Specificity argument;
-		if (left_is_value || right_is_value) {
-			// a value says more than a value variable
-			if (left_is_value && right_is_value) {
-				argument = Specificity::EQUAL;
-			} else if (left_is_value) {
-				argument = right_argument.IsType() ? Specificity::INCOMPARABLE : Specificity::LESS;
-			} else {
-				argument = left_argument.IsType() ? Specificity::INCOMPARABLE : Specificity::MORE;
-			}
-		} else if (left_argument.IsType() && right_argument.IsType()) {
-			argument =
-			    CompareSpecificity(left_signature, left_argument.GetType(), right_signature, right_argument.GetType());
-		} else {
-			argument = left_argument == right_argument ? Specificity::EQUAL : Specificity::INCOMPARABLE;
-		}
-		result = CombineSpecificity(result, argument);
-	}
-	return result;
-}
-
-//! Whether an overload says more than another one about the arguments of the call both match
-static Specificity CompareSpecificity(const FunctionBinding &left, const FunctionBinding &right) {
-	auto &left_signature = left.GetFunction().GetSignature();
-	auto &right_signature = right.GetFunction().GetSignature();
-	// the parameter of the right overload that receives each argument of the call
-	vector<idx_t> right_parameters(right.layout.arguments.size());
-	for (auto &argument : right.layout.arguments) {
-		if (argument.argument_index.IsValid()) {
-			right_parameters[argument.argument_index.GetIndex()] = argument.parameter_index;
-		}
-	}
-	auto result = Specificity::EQUAL;
-	for (auto &argument : left.layout.arguments) {
-		if (!argument.argument_index.IsValid()) {
-			continue;
-		}
-		auto &left_type = left_signature.GetParameter(argument.parameter_index).GetTypeName();
-		auto &right_type =
-		    right_signature.GetParameter(right_parameters[argument.argument_index.GetIndex()]).GetTypeName();
-		result = CombineSpecificity(result, CompareSpecificity(left_signature, left_type, right_signature, right_type));
-	}
-	return result;
-}
-
-bool FunctionBinder::IsMoreSpecific(const FunctionBinding &left, const FunctionBinding &right) {
-	return CompareSpecificity(left, right) == Specificity::MORE;
-}
-
 //! Lay the arguments of a call out over the parameters of an overload. This is about the shape of the call only, not
 //! about types: a positional argument is passed to the parameter at its position or to "*args", a named one to the
 //! parameter of its name or to "**kwargs", and a parameter the call leaves out is filled by its default. Returns the
@@ -990,9 +899,9 @@ static FunctionMismatch VariableMismatch(idx_t overload, const shared_ptr<const 
 	return FunctionMismatch(overload, function, is_incompatible ? 1 : 0, std::move(reason));
 }
 
-//! Determine the types the arguments of a function are passed as, and what the casts to them cost: the type of every
-//! argument of the layout is replaced by the type of the parameter that receives it. Returns the binding - or why
-//! the arguments cannot be passed
+//! Determine the types the arguments of a function are passed as, and how well the call matches (see FunctionRank):
+//! the type of every argument of the layout is replaced by the type of the parameter that receives it. Returns the
+//! binding - or why the arguments cannot be passed
 static Result<FunctionBinding, FunctionMismatch>
 ResolveArgumentTypes(TypeCache &cache, idx_t overload, const shared_ptr<const SimpleFunction> &function,
                      const FunctionCallArguments &call, ArgumentLayout layout, bool explicit_casts,
@@ -1003,7 +912,7 @@ ResolveArgumentTypes(TypeCache &cache, idx_t overload, const shared_ptr<const Si
 	// Match every argument against the type its parameter declares. The first argument that cannot be cast is
 	// reported, and the more there are the further the call is from matching
 	VariableBindings bindings;
-	idx_t cost = 0;
+	FunctionRank rank;
 	bool has_unknown_argument = false;
 	optional<FunctionMismatch::Reason> mismatch;
 	idx_t mismatch_count = 0;
@@ -1030,14 +939,21 @@ ResolveArgumentTypes(TypeCache &cache, idx_t overload, const shared_ptr<const Si
 		if (match.cost < 0) {
 			if (!mismatch) {
 				// a parameter that uses a variable reads as it is declared
-				const bool is_generic = GetVariableUse(sig, name).IsGeneric();
+				const bool is_generic = match.use.IsGeneric();
 				mismatch = FunctionMismatch::IncompatibleArgument {source, argument.parameter_index,
 				                                                   is_generic ? LogicalType() : match.type, is_generic};
 			}
 			mismatch_count++;
 			continue;
 		}
-		cost += static_cast<idx_t>(match.cost);
+		rank.legacy_casts += match.cost >= OLD_IMPLICIT_CAST_COST ? 1 : 0;
+		rank.unconstrained_arguments += match.is_unconstrained ? 1 : 0;
+		rank.cast_cost += static_cast<idx_t>(match.cost);
+		if (match.use.uses_variable || match.use.uses_any) {
+			rank.variable_parameters++;
+			rank.declared_structure += match.use.structure;
+		}
+		rank.declared_values += match.use.values;
 	}
 	if (mismatch) {
 		return Err(FunctionMismatch(overload, function, mismatch_count, std::move(*mismatch)));
@@ -1068,8 +984,8 @@ ResolveArgumentTypes(TypeCache &cache, idx_t overload, const shared_ptr<const Si
 		binding.variable_values = std::move(variables.values);
 	}
 
-	// with a parameter of an unknown type, the cost is 0
-	binding.cost = has_unknown_argument ? 0 : cost;
+	// with a parameter of an unknown type, every overload ranks the same
+	binding.rank = has_unknown_argument ? FunctionRank() : rank;
 	binding.layout = std::move(layout);
 	return std::move(binding);
 }

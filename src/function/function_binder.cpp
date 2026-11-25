@@ -155,7 +155,7 @@ FunctionBindResult FunctionBinder::SelectFunction(TypeCache &type_cache, const B
 		return FunctionBindError::CreateDuplicateArgument(functions.GetName(), call, duplicate.GetIndex(), kind);
 	}
 
-	// Try to match each overload, keeping the ones that match at the lowest cost
+	// Try to match each overload, keeping the ones of the best rank
 	vector<FunctionBinding> cheapest;
 	vector<FunctionMismatch> mismatches;
 	for (idx_t overload = 0; overload < functions.GetOverloadCount(); overload++) {
@@ -170,7 +170,7 @@ FunctionBindResult FunctionBinder::SelectFunction(TypeCache &type_cache, const B
 		}
 		auto &binding = *match;
 
-		// We only keep the cheap(est) matches
+		// We only keep the best matches
 		if (!cheapest.empty() && cheapest[0] < binding) {
 			continue;
 		}
@@ -188,21 +188,11 @@ FunctionBindResult FunctionBinder::SelectFunction(TypeCache &type_cache, const B
 	if (cheapest.size() == 1) {
 		return std::move(cheapest[0]);
 	}
-	// several overloads match at the lowest cost
+	// several overloads match at the best rank
 	for (idx_t i = 0; i < call.GetPositionalCount(); i++) {
 		if (call.GetArgument(i).type.IsUnknown()) {
 			// the types of the prepared statement parameters may decide between them
 			throw ParameterNotResolvedException();
-		}
-	}
-	// the overload that declares the most about its arguments is the best match, if there is one
-	for (idx_t i = 0; i < cheapest.size(); i++) {
-		bool most_specific = true;
-		for (idx_t j = 0; j < cheapest.size() && most_specific; j++) {
-			most_specific = i == j || IsMoreSpecific(cheapest[i], cheapest[j]);
-		}
-		if (most_specific) {
-			return std::move(cheapest[i]);
 		}
 	}
 	return FunctionBindError::CreateAmbiguousMatch(functions.GetName(), call, std::move(cheapest));

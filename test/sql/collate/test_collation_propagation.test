@@ -114,3 +114,58 @@ select a from tbl where starts_with(b collate noaccent, '>>>>>o') order by all
 ----
 o
 ö
+
+# arguments with and without a collation unify to the collated type, in either order
+statement ok
+create table u (id integer, a varchar, b varchar collate nocase);
+
+statement ok
+insert into u values (1, 'x', 'A');
+
+query II
+select typeof(array_value(a, b)), typeof(array_value(b, a)) from u;
+----
+VARCHAR('nocase')[2]	VARCHAR('nocase')[2]
+
+query II
+select array_value(a, b)[2] = 'a', array_value(b, a)[1] = 'a' from u;
+----
+true	true
+
+query II
+select typeof(least([a], [b])), typeof(least([b], [a])) from u;
+----
+VARCHAR('nocase')[]	VARCHAR('nocase')[]
+
+query II
+select typeof(greatest([a], [b])), typeof(greatest([b], [a])) from u;
+----
+VARCHAR('nocase')[]	VARCHAR('nocase')[]
+
+query II
+select least([a], [b]) = ['a'], least([b], [a]) = ['a'] from u;
+----
+true	true
+
+query III
+select name, typeof(value), value = 'a' from (unpivot u on a, b) order by name;
+----
+a	VARCHAR('nocase')	false
+b	VARCHAR('nocase')	true
+
+query III
+select name, typeof(value), value = 'a' from (unpivot u on b, a) order by name;
+----
+a	VARCHAR('nocase')	false
+b	VARCHAR('nocase')	true
+
+# a list literal keeps the collation whatever the order of its elements
+query II
+select typeof([a, b]), typeof([b, a]) from u;
+----
+VARCHAR('nocase')[]	VARCHAR('nocase')[]
+
+query II
+select [a, b][2] = 'a', [b, a][1] = 'a' from u;
+----
+true	true

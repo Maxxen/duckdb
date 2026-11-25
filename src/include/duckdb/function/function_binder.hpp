@@ -49,7 +49,6 @@ struct ResolvedTableFunction {
 	named_argument_map_t named_parameters;
 };
 
-
 //! What a call determines the variables of a signature to be
 struct FunctionVariables {
 	//! The types of the type variables. SQLNULL or UNKNOWN if the arguments that determine one say nothing
@@ -70,7 +69,7 @@ struct BoundArgument {
 	//! argument itself
 	LogicalType type;
 
-	bool IsDefaultArgument() const { 
+	bool IsDefaultArgument() const {
 		return !argument_index.IsValid();
 	}
 };
@@ -96,6 +95,92 @@ struct ArgumentLayout {
 	}
 };
 
+//! How well an overload matches a call. The overload of a function set that a call binds to is selected in four steps.
+//! A type variable of a signature is constrained if it only stands for types of one kind (T IS STRUCT), else it is
+//! unconstrained. ANY is an unconstrained type variable of its own every time it is written.
+//!
+//! 1. Shape. An overload is a candidate only if the arguments of the call can be laid out over its parameters: a
+//!    positional argument is passed to the parameter at its position or to "*args", a named argument to the
+//!    parameter of its name or to "**kwargs", and every parameter the call leaves out has a default.
+//!
+//! 2. Types. Every argument has to be passable to the parameter that receives it:
+//!    - A parameter whose type uses no variable takes an argument that casts implicitly to that type.
+//!    - A parameter whose type uses a variable takes an argument whose type is an instance of the declared type, or
+//!      casts implicitly to the instance that is made of its own parts: INTEGER[3] is passed to T[] as INTEGER[],
+//!      and INTEGER to DECIMAL(W, S) as DECIMAL(10, 0).
+//!    - A NULL, an unresolved parameter, and a string literal that is passed to a type with arguments say nothing
+//!      about the variables.
+//!    A type variable is the promotion of the types the arguments say it is, a value variable the one value they
+//!    say it is. An overload is not a candidate if the arguments disagree about a variable, or do not determine
+//!    every variable of the return type and of the parameters that receive an argument.
+//!
+//! 3. Rank. Every candidate has a rank of six numbers. Two candidates are compared number by number in the order of
+//!    the rules below, and the first difference decides:
+//!    1. legacy_casts, fewer is better: the arguments whose cast is only implicit because of the
+//!       old_implicit_casting setting.
+//!    2. unconstrained_arguments, fewer is better: the arguments, other than a NULL, that are passed to a parameter
+//!       whose type uses an unconstrained type variable.
+//!    3. cast_cost, lower is better: the sum of the implicit cast costs of the arguments. An argument costs the
+//!       implicit cast to the type it is passed as in step 2, which is 0 for its own type. A NULL costs the cast of
+//!       a NULL to the kind of type the parameter declares, and 5 if the parameter is declared as an unconstrained
+//!       type variable by itself. A string literal that is passed to a type with arguments that uses a variable
+//!       costs 20.
+//!    4. variable_parameters, fewer is better: the arguments that are passed to a parameter whose type uses a type
+//!       variable, constrained or not.
+//!    5. declared_structure, more is better: over the arguments of rule 4, 2 for every type that the type of the
+//!       parameter names and 1 for every constrained type variable in it. T[] counts 2, MAP(VARCHAR, T) counts 4,
+//!       T IS STRUCT counts 1, an unconstrained type variable counts 0.
+//!    6. declared_values, more is better: over all arguments, 2 for every literal and 1 for every value variable in
+//!       the type of the parameter. DECIMAL(18, 3) counts 4, DECIMAL(W, 0) counts 3, FLOAT[N] and GEOMETRY(C) count 1.
+//!    Rules 4 to 6 count a parameter once for every argument of the call it receives, and not for a default. When the
+//!    arguments are cast explicitly, nothing is ranked.
+//!
+//! 4. Result. The candidate that ranks before every other one is selected. Several candidates of the best rank make
+//!    the call ambiguous, which is an error - unless a positional argument is an unresolved parameter: all
+//!    candidates of such a call rank the same, and the call is bound again once the parameter has a type.
+struct FunctionRank {
+	//! Rule 1: the arguments that are only cast implicitly because of the old_implicit_casting setting
+	idx_t legacy_casts = 0;
+	//! Rule 2: the arguments, other than a NULL, passed through an unconstrained type variable
+	idx_t unconstrained_arguments = 0;
+	//! Rule 3: the sum of the implicit cast costs of the arguments
+	idx_t cast_cost = 0;
+	//! Rule 4: the arguments passed to a parameter whose type uses a type variable
+	idx_t variable_parameters = 0;
+	//! Rule 5: the types and kinds that the types of those parameters declare
+	idx_t declared_structure = 0;
+	//! Rule 6: the literals and value variables that the types of the parameters declare
+	idx_t declared_values = 0;
+
+	//! Whether this rank comes before the other one: the first rule they differ in decides
+	bool operator<(const FunctionRank &other) const {
+		if (legacy_casts != other.legacy_casts) {
+			return legacy_casts < other.legacy_casts;
+		}
+		if (unconstrained_arguments != other.unconstrained_arguments) {
+			return unconstrained_arguments < other.unconstrained_arguments;
+		}
+		if (cast_cost != other.cast_cost) {
+			return cast_cost < other.cast_cost;
+		}
+		if (variable_parameters != other.variable_parameters) {
+			return variable_parameters < other.variable_parameters;
+		}
+		if (declared_structure != other.declared_structure) {
+			return declared_structure > other.declared_structure;
+		}
+		return declared_values > other.declared_values;
+	}
+	bool operator==(const FunctionRank &other) const {
+		return legacy_casts == other.legacy_casts && unconstrained_arguments == other.unconstrained_arguments &&
+		       cast_cost == other.cast_cost && variable_parameters == other.variable_parameters &&
+		       declared_structure == other.declared_structure && declared_values == other.declared_values;
+	}
+	bool operator!=(const FunctionRank &other) const {
+		return !(*this == other);
+	}
+};
+
 //! An overload that matches a call, and how the arguments of the call are passed to it
 struct FunctionBinding {
 	//! The index of the overload in the function set
@@ -106,10 +191,10 @@ struct FunctionBinding {
 	const SimpleFunction &GetFunction() const {
 		return *function;
 	}
-	//! Whether the call binds to this overload at a lower cost - an order of how well the overloads match, not of
-	//! which overload they are
+	//! Whether the call binds better to this overload - an order of how well the overloads match, not of which
+	//! overload they are
 	bool operator<(const FunctionBinding &other) const {
-		return cost < other.cost;
+		return rank < other.rank;
 	}
 	template <class T>
 	shared_ptr<const T> GetFunction() const {
@@ -117,8 +202,8 @@ struct FunctionBinding {
 		return shared_ptr_cast<const SimpleFunction, const T>(function);
 	}
 
-	//! The cost of casting the arguments to the parameters of the overload
-	idx_t cost = 0;
+	//! How well the call matches the overload
+	FunctionRank rank;
 	//! The arguments the function is bound with
 	ArgumentLayout layout;
 	//! What the call determines the variables of the overload to be: the type of every type variable, and the
@@ -354,7 +439,7 @@ public:
 		optional_ptr<const FunctionMismatch> GetClosest() const;
 		ErrorData ToError(const FunctionBindError &error) const;
 	};
-	//! Several overloads match at the lowest cost
+	//! Several overloads match at the best rank
 	struct AmbiguousMatch {
 		static constexpr auto TYPE = Type::AMBIGUOUS_MATCH;
 		vector<FunctionBinding> candidates;
@@ -379,7 +464,7 @@ public:
 	                                       vector<FunctionMismatch> mismatches) {
 		return FunctionBindError(std::move(name), std::move(call), NoMatch {std::move(mismatches)});
 	}
-	//! Several overloads match the call at the lowest cost
+	//! Several overloads match the call at the best rank
 	static FunctionBindError CreateAmbiguousMatch(Identifier name, FunctionCallArguments call,
 	                                              vector<FunctionBinding> candidates) {
 		return FunctionBindError(std::move(name), std::move(call), AmbiguousMatch {std::move(candidates)});
@@ -481,7 +566,8 @@ public:
 	TypeCache &GetTypeCache();
 
 public:
-	//! Overload selection: the cheapest overload of a function set that a call with the given arguments binds to.
+	//! Overload selection: the overload of a function set that a call with the given arguments binds to, by the steps
+	//! and the ranking that FunctionRank describes.
 	//! Selection needs no binder - without a ClientContext only the built-in implicit casts are considered. With
 	//! explicit casts, an argument that cannot be implicitly cast to its parameter is accepted too. Template types
 	//! unify decimals within the limit, if one is given, else within the max_decimal_width setting
@@ -717,9 +803,6 @@ private:
 	MatchOverload(TypeCache &cache, idx_t overload, shared_ptr<const SimpleFunction> function,
 	              const FunctionCallArguments &call, bool explicit_casts,
 	              optional_ptr<const DecimalWidthLimit> decimal_width_limit = nullptr);
-	//! Whether an overload declares more about the arguments of a call than another one that matches it as well: the
-	//! type of a parameter says more than a type variable, and a variable of a kind more than one of any type
-	static bool IsMoreSpecific(const FunctionBinding &left, const FunctionBinding &right);
 	//! SelectFunction, with the types constructed before
 	static FunctionBindResult SelectFunction(TypeCache &cache, const BaseFunctionSet &functions,
 	                                         const FunctionCallArguments &call, bool explicit_casts,

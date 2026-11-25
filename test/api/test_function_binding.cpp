@@ -350,6 +350,58 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 	});
 }
 
+TEST_CASE("A value the type of a parameter declares is the one an argument of its kind has",
+          "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	con.context->RunFunctionInTransaction([&]() {
+		// integral<W: INTEGER>(x DECIMAL(W, 0)) -> INTEGER
+		ScalarFunctionSet integral("integral");
+		integral.AddFunction(
+		    ScalarFunction("integral",
+		                   FunctionSignature()
+		                       .AddVariable("W", TypeVariable::Kind::INTEGER)
+		                       .AddParameter("x", TypeName::DECIMAL(TypeName::VARIABLE("W"), Literal::Integer(0)))
+		                       .SetReturnType(LogicalType::INTEGER),
+		                   NoopExec));
+		// a decimal of the scale is taken as it is
+		auto selection = FunctionBinder::SelectFunction(*con.context, integral, {LogicalType::DECIMAL(18, 0)});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::DECIMAL(18, 0));
+		REQUIRE(selection.GetBinding().variable_values.at("W") == Value::BIGINT(18));
+		// one of another scale is not passed as one of it
+		selection = FunctionBinder::SelectFunction(*con.context, integral, {LogicalType::DECIMAL(18, 3)});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
+		// a number is passed as the decimal that holds it, and a NULL says nothing
+		selection = FunctionBinder::SelectFunction(*con.context, integral, {LogicalType::INTEGER});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::DECIMAL(10, 0));
+		selection = FunctionBinder::SelectFunction(*con.context, integral, {LogicalType::SQLNULL});
+		REQUIRE(selection.IsSuccess());
+
+		// triple<T>(x T[3]) -> T
+		ScalarFunctionSet triple("triple");
+		triple.AddFunction(ScalarFunction("triple",
+		                                  FunctionSignature()
+		                                      .AddVariable("T")
+		                                      .AddParameter("x", TypeName::ARRAY(TypeName::VARIABLE("T"), 3))
+		                                      .SetReturnType(TypeName::VARIABLE("T")),
+		                                  NoopExec));
+		const auto integers_3 = LogicalType::ARRAY(LogicalType::INTEGER, 3);
+		selection = FunctionBinder::SelectFunction(*con.context, triple, {integers_3});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == integers_3);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::INTEGER);
+		selection = FunctionBinder::SelectFunction(*con.context, triple, {LogicalType::ARRAY(LogicalType::INTEGER, 4)});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+		// a list says no size: it is passed as an array of the one the name declares
+		selection = FunctionBinder::SelectFunction(*con.context, triple, {LogicalType::LIST(LogicalType::INTEGER)});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == integers_3);
+	});
+}
+
 TEST_CASE("A call no overload matches records why each overload fails", "[api][function_binding]") {
 	DuckDB db(nullptr);
 	Connection con(db);
@@ -436,7 +488,7 @@ TEST_CASE("A call several overloads match at the same cost is ambiguous", "[api]
 	// only the overloads tied at the lowest cost
 	auto &candidates = selection.GetError().Cast<FunctionBindError::AmbiguousMatch>().candidates;
 	REQUIRE(candidates.size() == 2);
-	REQUIRE(candidates[0].cost == candidates[1].cost);
+	REQUIRE(candidates[0].rank == candidates[1].rank);
 }
 
 TEST_CASE("Of the overloads that match at the same cost the most specific one is selected", "[api][function_binding]") {
@@ -542,8 +594,11 @@ TEST_CASE("Overloads that match at the same cost are selected by how specific th
 	const TypeName geometry_c(Identifier("GEOMETRY"), {TypeName::VARIABLE("C")});
 	const auto decimal_ws = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
 	const TypeName decimal_18_3(LogicalType::DECIMAL(18, 3));
+	const auto decimal_w0 = TypeName::DECIMAL(TypeName::VARIABLE("W"), Literal::Integer(0));
 	const auto float_n = TypeName::ARRAY(LogicalType::FLOAT, TypeName::VARIABLE("N"));
 	const auto float_3 = TypeName::ARRAY(LogicalType::FLOAT, 3);
+	const auto t_n = TypeName::ARRAY(t, TypeName::VARIABLE("N"));
+	const auto t_3 = TypeName::ARRAY(t, 3);
 	const auto struct_a = TypeName::STRUCT({{"a", LogicalType::INTEGER}});
 	const auto integer_list = TypeName::LIST(LogicalType::INTEGER);
 
@@ -552,6 +607,7 @@ TEST_CASE("Overloads that match at the same cost are selected by how specific th
 		const auto crs = LogicalType::GEOMETRY("OGC:CRS84");
 		const auto no_crs = LogicalType::GEOMETRY();
 		const auto decimal = LogicalType::DECIMAL(18, 3);
+		const auto integral = LogicalType::DECIMAL(18, 0);
 		const LogicalType integer = LogicalType::INTEGER;
 		const auto floats_3 = LogicalType::ARRAY(LogicalType::FLOAT, 3);
 		const auto floats_4 = LogicalType::ARRAY(LogicalType::FLOAT, 4);
@@ -573,6 +629,10 @@ TEST_CASE("Overloads that match at the same cost are selected by how specific th
 		    {"FLOAT[3] over FLOAT[N], INTEGER[3]", {{float_3}, {float_n}}, {integers_3}, 0},
 		    {"FLOAT[3] over FLOAT[N], NULL", {{float_3}, {float_n}}, {null}, 0},
 		    {"DECIMAL(18, 3) over DECIMAL(W, S), DECIMAL(18, 3)", {{decimal_18_3}, {decimal_ws}}, {decimal}, 0},
+		    {"DECIMAL(W, 0) over DECIMAL(W, S), DECIMAL(18, 0)", {{decimal_w0}, {decimal_ws}}, {integral}, 0},
+		    {"DECIMAL(W, 0) over DECIMAL(W, S), an integer", {{decimal_w0}, {decimal_ws}}, {integer}, 0},
+		    {"DECIMAL(W, 0) over DECIMAL(W, S), NULL", {{decimal_w0}, {decimal_ws}}, {null}, 0},
+		    {"T[3] over T[N], FLOAT[3]", {{t_3}, {t_n}}, {floats_3}, 0},
 		    // a type says more than a type variable of its kind
 		    {"STRUCT(a INTEGER) over T IS STRUCT, NULL", {{struct_a}, {t_struct}}, {null}, 0},
 		    {"STRUCT(a INTEGER) over T IS STRUCT, the struct", {{struct_a}, {t_struct}}, {a_struct}, 0},
@@ -620,6 +680,8 @@ TEST_CASE("Overloads that match at the same cost are selected by how specific th
 		    // no tie: only one of the overloads takes the argument
 		    {"GEOMETRY, not GEOMETRY(C), a geometry of no CRS", {{geometry_c}, {geometry}}, {no_crs}, 1},
 		    {"FLOAT[N], not FLOAT[3], FLOAT[4]", {{float_3}, {float_n}}, {floats_4}, 1},
+		    {"DECIMAL(W, S), not DECIMAL(W, 0), DECIMAL(18, 3)", {{decimal_w0}, {decimal_ws}}, {decimal}, 1},
+		    {"T[N], not T[3], FLOAT[4]", {{t_3}, {t_n}}, {floats_4}, 1},
 		    // no tie: the cost decides, a type variable of any type costs more than any cast - but less for a NULL
 		    {"INTEGER at a lower cost than T, an integer", {{LogicalType::INTEGER}, {t}}, {integer}, 0},
 		    {"T at a lower cost than INTEGER, NULL", {{LogicalType::INTEGER}, {t}}, {null}, 1},
@@ -653,6 +715,239 @@ TEST_CASE("Overloads that match at the same cost are selected by how specific th
 					CHECK((reversed ? count - 1 - index : index) == test.selected.GetIndex());
 				}
 			}
+		}
+	});
+}
+
+//! A call of one overload, and the rank the call matches it at
+struct RankCase {
+	string description;
+	FunctionSignature signature;
+	vector<LogicalType> arguments;
+	FunctionRank rank;
+};
+
+static FunctionRank MakeRank(idx_t unconstrained_arguments, idx_t cast_cost, idx_t variable_parameters,
+                             idx_t declared_structure, idx_t declared_values) {
+	FunctionRank rank;
+	rank.unconstrained_arguments = unconstrained_arguments;
+	rank.cast_cost = cast_cost;
+	rank.variable_parameters = variable_parameters;
+	rank.declared_structure = declared_structure;
+	rank.declared_values = declared_values;
+	return rank;
+}
+
+TEST_CASE("A call matches an overload at the rank the rules count", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto t = TypeName::VARIABLE("T");
+	const auto t_struct = TypeName::VARIABLE("TS");
+	const auto t_list = TypeName::LIST(t);
+	const TypeName geometry_c(Identifier("GEOMETRY"), {TypeName::VARIABLE("C")});
+	const auto decimal_ws = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
+	const auto decimal_w0 = TypeName::DECIMAL(TypeName::VARIABLE("W"), Literal::Integer(0));
+	const TypeName decimal_18_3(LogicalType::DECIMAL(18, 3));
+	const auto float_n = TypeName::ARRAY(LogicalType::FLOAT, TypeName::VARIABLE("N"));
+	const auto t_3 = TypeName::ARRAY(t, 3);
+	const auto map_varchar_t = TypeName::MAP(LogicalType::VARCHAR, t);
+
+	// every(*args T): a parameter is counted for every argument it receives
+	FunctionSignature variadic;
+	variadic.AddVariable("T").AddArgs("args", t).SetReturnType(LogicalType::INTEGER);
+	// defaulted(x INTEGER, y DECIMAL(18, 3) := 1): a parameter is not counted for its default
+	FunctionSignature defaulted;
+	defaulted.AddParameter("x", LogicalType::INTEGER);
+	defaulted.AddParameter("y", decimal_18_3, Value::DECIMAL(int64_t(1000), 18, 3));
+	defaulted.SetReturnType(LogicalType::INTEGER);
+
+	con.context->RunFunctionInTransaction([&]() {
+		const LogicalType integer = LogicalType::INTEGER;
+		const LogicalType null = LogicalType::SQLNULL;
+		const LogicalType unknown = LogicalType::UNKNOWN;
+		const LogicalType string_literal(LogicalTypeId::STRING_LITERAL);
+		const auto integers = LogicalType::LIST(LogicalType::INTEGER);
+		const auto floats_3 = LogicalType::ARRAY(LogicalType::FLOAT, 3);
+		const auto a_struct = LogicalType::STRUCT({{"a", LogicalType::INTEGER}});
+		const auto a_map = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::INTEGER);
+		const auto crs = LogicalType::GEOMETRY("OGC:CRS84");
+
+		const vector<RankCase> cases {
+		    {"a declared type that is the type of the argument",
+		     GetSelectionSignature({LogicalType::INTEGER}),
+		     {integer},
+		     MakeRank(0, 0, 0, 0, 0)},
+		    {"rule 2: T, an integer", GetSelectionSignature({t}), {integer}, MakeRank(1, 0, 1, 0, 0)},
+		    {"rule 2 and 3: T, a NULL is not counted and costs 5",
+		     GetSelectionSignature({t}),
+		     {null},
+		     MakeRank(0, 5, 1, 0, 0)},
+		    {"rule 3: T[] and T, a string literal costs 20",
+		     GetSelectionSignature({t_list, t}),
+		     {string_literal, integer},
+		     MakeRank(2, 20, 2, 2, 0)},
+		    {"rule 4: T IS STRUCT, a struct", GetSelectionSignature({t_struct}), {a_struct}, MakeRank(0, 0, 1, 1, 0)},
+		    {"rule 5: T[], a list", GetSelectionSignature({t_list}), {integers}, MakeRank(1, 0, 1, 2, 0)},
+		    {"rule 5: MAP(VARCHAR, T), a map",
+		     GetSelectionSignature({map_varchar_t}),
+		     {a_map},
+		     MakeRank(1, 0, 1, 4, 0)},
+		    {"rule 5: T and T[], an integer and a list",
+		     GetSelectionSignature({t, t_list}),
+		     {integer, integers},
+		     MakeRank(2, 0, 2, 2, 0)},
+		    {"rule 5 and 6: T[3], an array", GetSelectionSignature({t_3}), {floats_3}, MakeRank(1, 0, 1, 2, 2)},
+		    {"rule 6: DECIMAL(W, S), a decimal",
+		     GetSelectionSignature({decimal_ws}),
+		     {LogicalType::DECIMAL(18, 3)},
+		     MakeRank(0, 0, 0, 0, 2)},
+		    {"rule 6: DECIMAL(W, 0), a decimal",
+		     GetSelectionSignature({decimal_w0}),
+		     {LogicalType::DECIMAL(18, 0)},
+		     MakeRank(0, 0, 0, 0, 3)},
+		    {"rule 6: DECIMAL(18, 3), a decimal",
+		     GetSelectionSignature({decimal_18_3}),
+		     {LogicalType::DECIMAL(18, 3)},
+		     MakeRank(0, 0, 0, 0, 4)},
+		    {"rule 6: FLOAT[N], an array", GetSelectionSignature({float_n}), {floats_3}, MakeRank(0, 0, 0, 0, 1)},
+		    {"rule 6: GEOMETRY(C), a geometry of a CRS",
+		     GetSelectionSignature({geometry_c}),
+		     {crs},
+		     MakeRank(0, 0, 0, 0, 1)},
+		    {"rules 4 to 6: *args T, once for every argument",
+		     variadic,
+		     {integer, integer, integer},
+		     MakeRank(3, 0, 3, 0, 0)},
+		    {"rules 4 to 6: not for a default", defaulted, {integer}, MakeRank(0, 0, 0, 0, 0)},
+		    {"an unresolved parameter ranks nothing",
+		     GetSelectionSignature({t_list, t}),
+		     {unknown, integer},
+		     FunctionRank()},
+		};
+
+		for (auto &test : cases) {
+			ScalarFunctionSet set("f");
+			set.AddFunction(ScalarFunction("f", test.signature, NoopExec));
+			INFO(test.description);
+			auto selection = FunctionBinder::SelectFunction(*con.context, set, test.arguments);
+			CHECK(selection.IsSuccess());
+			if (!selection.IsSuccess()) {
+				continue;
+			}
+			auto &rank = selection.GetBinding().rank;
+			CHECK(rank.legacy_casts == test.rank.legacy_casts);
+			CHECK(rank.unconstrained_arguments == test.rank.unconstrained_arguments);
+			CHECK(rank.cast_cost == test.rank.cast_cost);
+			CHECK(rank.variable_parameters == test.rank.variable_parameters);
+			CHECK(rank.declared_structure == test.rank.declared_structure);
+			CHECK(rank.declared_values == test.rank.declared_values);
+		}
+	});
+}
+
+TEST_CASE("The rules of the rank decide between overloads in their order", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto t = TypeName::VARIABLE("T");
+	const auto u = TypeName::VARIABLE("U");
+	const auto t_decimal = TypeName::VARIABLE("TD");
+	const auto t_struct = TypeName::VARIABLE("TS");
+	const TypeName any(LogicalType::ANY);
+	const auto t_list = TypeName::LIST(t);
+	const auto any_list = TypeName::LIST(any);
+	const auto float_n = TypeName::ARRAY(LogicalType::FLOAT, TypeName::VARIABLE("N"));
+	const auto float_3 = TypeName::ARRAY(LogicalType::FLOAT, 3);
+	const auto t_n = TypeName::ARRAY(t, TypeName::VARIABLE("N"));
+	const auto t_3 = TypeName::ARRAY(t, 3);
+	const auto struct_a = TypeName::STRUCT({{"a", LogicalType::INTEGER}});
+	const auto map_varchar_t = TypeName::MAP(LogicalType::VARCHAR, t);
+	const auto map_u_t = TypeName::MAP(u, t);
+
+	con.context->RunFunctionInTransaction([&]() {
+		const LogicalType integer = LogicalType::INTEGER;
+		const LogicalType null = LogicalType::SQLNULL;
+		const auto decimal = LogicalType::DECIMAL(18, 3);
+		const auto integers = LogicalType::LIST(LogicalType::INTEGER);
+		const auto integers_3 = LogicalType::ARRAY(LogicalType::INTEGER, 3);
+		const auto floats_3 = LogicalType::ARRAY(LogicalType::FLOAT, 3);
+		const auto a_struct = LogicalType::STRUCT({{"a", LogicalType::INTEGER}});
+		const auto a_map = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::INTEGER);
+
+		const vector<SelectionCase> cases {
+		    {"rule 2: INTEGER over T, an integer", {{LogicalType::INTEGER}, {t}}, {integer}, 0},
+		    {"rule 2 before rule 3: BIGINT with a cast over T without one, an integer",
+		     {{LogicalType::BIGINT}, {t}},
+		     {integer},
+		     0},
+		    {"rule 3: BIGINT over DOUBLE, an integer", {{LogicalType::BIGINT}, {LogicalType::DOUBLE}}, {integer}, 0},
+		    {"rule 3: T over INTEGER, NULL", {{LogicalType::INTEGER}, {t}}, {null}, 1},
+		    {"rule 3 before rule 4: T IS DECIMAL without a cast over DOUBLE with one, a decimal",
+		     {{t_decimal}, {LogicalType::DOUBLE}},
+		     {decimal},
+		     0},
+		    {"rule 3 before rule 5: ANY over ANY[], an array is cast to a list", {{any_list}, {any}}, {integers_3}, 1},
+		    {"rule 4: STRUCT(a INTEGER) over T IS STRUCT, the struct", {{struct_a}, {t_struct}}, {a_struct}, 0},
+		    {"rule 5: T[] over T, a list", {{t_list}, {t}}, {integers}, 0},
+		    {"rule 5: ANY[] over ANY, a list", {{any_list}, {any}}, {integers}, 0},
+		    {"rule 5: MAP(VARCHAR, T) over MAP(U, T), a map", {{map_varchar_t}, {map_u_t}}, {a_map}, 0},
+		    {"rule 5: (T[], T) over (T IS STRUCT, U), NULL and an integer",
+		     {{t_list, t}, {t_struct, u}},
+		     {null, integer},
+		     0},
+		    {"rule 5 before rule 6: (T[], FLOAT[N]) over (T, FLOAT[3])",
+		     {{t_list, float_n}, {t, float_3}},
+		     {integers, floats_3},
+		     0},
+		    {"rule 6: T[3] over T[N], an array", {{t_3}, {t_n}}, {floats_3}, 0},
+		    {"rule 6: FLOAT[3] over FLOAT[N], an array", {{float_3}, {float_n}}, {floats_3}, 0},
+		};
+
+		for (auto &test : cases) {
+			const auto count = test.overloads.size();
+			for (idx_t reversed = 0; reversed < 2; reversed++) {
+				ScalarFunctionSet set("f");
+				for (idx_t i = 0; i < count; i++) {
+					auto &parameters = test.overloads[reversed ? count - 1 - i : i];
+					set.AddFunction(ScalarFunction("f", GetSelectionSignature(parameters), NoopExec));
+				}
+				INFO(test.description << (reversed ? ", overloads in the opposite order" : ""));
+				auto selection = FunctionBinder::SelectFunction(*con.context, set, test.arguments);
+				CHECK(selection.IsSuccess());
+				if (selection.IsSuccess()) {
+					const auto index = selection.GetBinding().GetOverloadIndex();
+					CHECK((reversed ? count - 1 - index : index) == test.selected.GetIndex());
+				}
+			}
+		}
+	});
+}
+
+TEST_CASE("A cast that only old_implicit_casting allows ranks behind every other match", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	REQUIRE_NO_FAIL(con.Query("SET old_implicit_casting = true"));
+	const auto t = TypeName::VARIABLE("T");
+
+	con.context->RunFunctionInTransaction([&]() {
+		const LogicalType integer = LogicalType::INTEGER;
+		// rule 1: the cast of an integer to VARCHAR is counted
+		ScalarFunctionSet text("f");
+		text.AddFunction(ScalarFunction("f", GetSelectionSignature({LogicalType::VARCHAR}), NoopExec));
+		auto selection = FunctionBinder::SelectFunction(*con.context, text, {integer});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().rank.legacy_casts == 1);
+
+		// rule 1 before rule 2: T over VARCHAR, in either order
+		for (idx_t reversed = 0; reversed < 2; reversed++) {
+			ScalarFunctionSet set("f");
+			const TypeName first = reversed ? t : TypeName(LogicalType::VARCHAR);
+			const TypeName second = reversed ? TypeName(LogicalType::VARCHAR) : t;
+			set.AddFunction(ScalarFunction("f", GetSelectionSignature({first}), NoopExec));
+			set.AddFunction(ScalarFunction("f", GetSelectionSignature({second}), NoopExec));
+			selection = FunctionBinder::SelectFunction(*con.context, set, {integer});
+			REQUIRE(selection.IsSuccess());
+			REQUIRE(selection.GetBinding().GetOverloadIndex() == (reversed ? 0 : 1));
+			REQUIRE(selection.GetBinding().rank.legacy_casts == 0);
 		}
 	});
 }

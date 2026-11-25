@@ -22,10 +22,38 @@ select st_crs([1, 2]);
 ----
 Binder Error: No function matches the given name and argument types
 
+# a type that has a value where a geometry has its CRS
+statement ok
+create type mood as enum ('sad', 'ok');
+
+statement error
+select st_crs('sad'::mood);
+----
+Binder Error: No function matches the given name and argument types 'st_crs(ENUM('sad', 'ok'))'
+
+statement error
+select st_crs(1::DECIMAL(10,2));
+----
+Binder Error: No function matches the given name and argument types 'st_crs(DECIMAL(10,2))'
+
+statement ok
+create table collated (s VARCHAR COLLATE nocase);
+
+statement error
+select st_crs(s) from collated;
+----
+Binder Error: No function matches the given name and argument types 'st_crs(VARCHAR('nocase'))'
+
 query I
 select st_crs(st_setcrs('POINT(0 1)', 'OGC:CRS84'));
 ----
 OGC:CRS84
+
+# a CRS that is not identified
+query I
+select st_crs(st_setcrs('POINT(0 1)', 'EPSG:4326'));
+----
+EPSG:4326
 
 statement ok
 create table t1 (g GEOMETRY('OGC:CRS84'));

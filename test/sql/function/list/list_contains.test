@@ -218,6 +218,25 @@ SELECT contains([], NULL), list_contains([]::VARCHAR[], NULL), list_contains([1]
 ----
 false	false	NULL	NULL
 
+# an untyped NULL is searched as a list
+query IIII
+SELECT 1 IN NULL, contains(NULL, 1), 1.5 IN NULL, [1] IN NULL
+----
+NULL	NULL	NULL	NULL
+
+query II
+SELECT typeof(1 IN NULL), typeof(contains(NULL, 1))
+----
+BOOLEAN	BOOLEAN
+
+statement ok
+PREPARE in_null AS SELECT 1 IN $1
+
+query I
+EXECUTE in_null(NULL)
+----
+NULL
+
 query T
 SELECT list_contains(l, x) FROM (VALUES ([]::INT[], NULL::INT), ([1], NULL), (NULL, 1), ([], 1)) t(l, x)
 ----
