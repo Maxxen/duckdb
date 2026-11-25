@@ -261,3 +261,37 @@ query I
 select v['helo'] from (values ({'hello': 42}::variant)) t(v);
 ----
 NULL
+
+# a VARIANT is passed to a list as the list the other argument determines
+query III
+select list_contains([1, 2]::VARIANT, 1), [1, 2]::VARIANT && [2], list_intersect([1, 2]::VARIANT, [2, 3]);
+----
+true	true	[2]
+
+query II
+select list_position([1, 2]::VARIANT, 2), list_has_any([1, 2]::VARIANT, [5, 2]);
+----
+2	true
+
+# a VARIANT is not passed as the decimal the other argument is
+query I
+select typeof(1::DECIMAL(5,2) + 1::VARIANT);
+----
+DOUBLE
+
+query I
+select 1.00::DECIMAL(5,2) + 0.001::VARIANT;
+----
+1.001
+
+# nothing determines the type of the list when the VARIANT is passed alone
+statement error
+select list_distinct([1, 2]::VARIANT);
+----
+Binder Error: No function matches the given name and argument types 'list_distinct(VARIANT)'
+
+# an argument that does not cast to the list is not passed
+statement error
+select list_contains(42, 1);
+----
+Binder Error: No function matches the given name and argument types 'list_contains(INTEGER_LITERAL, INTEGER_LITERAL)'

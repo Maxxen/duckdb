@@ -246,8 +246,8 @@ TEST_CASE("A struct parameter of type variables takes the fields of a struct by 
 		const auto reordered = LogicalType::STRUCT({{"b", LogicalType::VARCHAR}, {"a", LogicalType::INTEGER}});
 		selection = FunctionBinder::SelectFunction(*con.context, set, {reordered});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variable_types.at("T") == LogicalType::INTEGER);
-		REQUIRE(selection.GetBinding().variable_types.at("U") == LogicalType::VARCHAR);
+		REQUIRE(selection.GetBinding().variables.types.at("T") == LogicalType::INTEGER);
+		REQUIRE(selection.GetBinding().variables.types.at("U") == LogicalType::VARCHAR);
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == declared);
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::VARCHAR);
 
@@ -281,7 +281,7 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::BIGINT);
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::ARRAY(LogicalType::DOUBLE, 3));
-		REQUIRE(selection.GetBinding().variable_values.at("N") == Value::BIGINT(3));
+		REQUIRE(selection.GetBinding().variables.values.at("N") == Value::BIGINT(3));
 
 		// any constant expression does, an argument that is not constant does not match
 		vector<unique_ptr<Expression>> arguments;
@@ -309,8 +309,8 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == bigint_array);
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == bigint_array);
-		REQUIRE(selection.GetBinding().variable_types.at("T") == LogicalType::BIGINT);
-		REQUIRE(selection.GetBinding().variable_values.at("N") == Value::BIGINT(3));
+		REQUIRE(selection.GetBinding().variables.types.at("T") == LogicalType::BIGINT);
+		REQUIRE(selection.GetBinding().variables.values.at("N") == Value::BIGINT(3));
 
 		// arguments that determine different values do not match the overload
 		selection = FunctionBinder::SelectFunction(*con.context, same,
@@ -324,10 +324,10 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		// an argument that says nothing leaves the value to the other arguments, or unknown: an array of any size
 		selection = FunctionBinder::SelectFunction(*con.context, same, {LogicalType::SQLNULL, int_array});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variable_values.at("N") == Value::BIGINT(3));
+		REQUIRE(selection.GetBinding().variables.values.at("N") == Value::BIGINT(3));
 		selection = FunctionBinder::SelectFunction(*con.context, same, {LogicalType::SQLNULL, LogicalType::SQLNULL});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variable_values.at("N").IsNull());
+		REQUIRE(selection.GetBinding().variables.values.at("N").IsNull());
 		REQUIRE(ArrayType::IsAnySize(selection.GetBinding().layout.arguments[0].type));
 
 		// rescaled<W: INTEGER, S: INTEGER>(x DECIMAL(W, S)) -> DECIMAL(W, S): also of the decimal a number is passed as
@@ -368,7 +368,7 @@ TEST_CASE("A value the type of a parameter declares is the one an argument of it
 		auto selection = FunctionBinder::SelectFunction(*con.context, integral, {LogicalType::DECIMAL(18, 0)});
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::DECIMAL(18, 0));
-		REQUIRE(selection.GetBinding().variable_values.at("W") == Value::BIGINT(18));
+		REQUIRE(selection.GetBinding().variables.values.at("W") == Value::BIGINT(18));
 		// one of another scale is not passed as one of it
 		selection = FunctionBinder::SelectFunction(*con.context, integral, {LogicalType::DECIMAL(18, 3)});
 		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
@@ -786,6 +786,10 @@ TEST_CASE("A call matches an overload at the rank the rules count", "[api][funct
 		     GetSelectionSignature({t_list, t}),
 		     {string_literal, integer},
 		     MakeRank(2, 20, 2, 2, 0)},
+		    {"rule 3: T[] and T, a VARIANT is deferred and costs the cast to the list",
+		     GetSelectionSignature({t_list, t}),
+		     {LogicalType::VARIANT(), integer},
+		     MakeRank(2, 160, 2, 2, 0)},
 		    {"rule 4: T IS STRUCT, a struct", GetSelectionSignature({t_struct}), {a_struct}, MakeRank(0, 0, 1, 1, 0)},
 		    {"rule 5: T[], a list", GetSelectionSignature({t_list}), {integers}, MakeRank(1, 0, 1, 2, 0)},
 		    {"rule 5: MAP(VARCHAR, T), a map",
@@ -949,6 +953,72 @@ TEST_CASE("A cast that only old_implicit_casting allows ranks behind every other
 			REQUIRE(selection.GetBinding().GetOverloadIndex() == (reversed ? 0 : 1));
 			REQUIRE(selection.GetBinding().rank.legacy_casts == 0);
 		}
+	});
+}
+
+TEST_CASE("An argument that is not an instance of the type of its parameter is deferred", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto t = TypeName::VARIABLE("T");
+	const auto variant = LogicalType::VARIANT();
+	const auto integers = LogicalType::LIST(LogicalType::INTEGER);
+	const LogicalType string_literal(LogicalTypeId::STRING_LITERAL);
+	const auto t_decimal = TypeName::VARIABLE("TD");
+	const auto decimal = LogicalType::DECIMAL(5, 2);
+	// has(list T[], element T), single(list T[]), wrapped(list ANY[], element INTEGER)
+	auto has = make_shared_ptr<ScalarFunction>("has", GetSelectionSignature({TypeName::LIST(t), t}), NoopExec);
+	ScalarFunctionSet has_set("has");
+	has_set.AddFunction(*has);
+	ScalarFunctionSet single_set("single");
+	single_set.AddFunction(ScalarFunction("single", GetSelectionSignature({TypeName::LIST(t)}), NoopExec));
+	ScalarFunctionSet wrapped_set("wrapped");
+	wrapped_set.AddFunction(ScalarFunction(
+	    "wrapped", GetSelectionSignature({TypeName::LIST(LogicalType::ANY), LogicalType::INTEGER}), NoopExec));
+	// plus(a T IS DECIMAL, b T IS DECIMAL), plus(a DOUBLE, b DOUBLE)
+	ScalarFunctionSet plus_set("plus");
+	plus_set.AddFunction(ScalarFunction("plus", GetSelectionSignature({t_decimal, t_decimal}), NoopExec));
+	ScalarFunctionSet plus_double_set = plus_set;
+	plus_double_set.AddFunction(
+	    ScalarFunction("plus", GetSelectionSignature({LogicalType::DOUBLE, LogicalType::DOUBLE}), NoopExec));
+
+	con.context->RunFunctionInTransaction([&]() {
+		// it is cast to the type the other argument determines
+		auto selection = FunctionBinder::SelectFunction(*con.context, has_set, {variant, LogicalType::INTEGER});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == integers);
+		REQUIRE(selection.GetBinding().variables.types.at("T") == LogicalType::INTEGER);
+		selection = FunctionBinder::SelectFunction(*con.context, has_set, {string_literal, LogicalType::INTEGER});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == integers);
+
+		// which it has to cast implicitly to
+		selection = FunctionBinder::SelectFunction(*con.context, has_set, {LogicalType::DATE, LogicalType::INTEGER});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
+		// unless the caller chose the function, and it is cast explicitly
+		auto binding = FunctionBinder::MatchFunction(*con.context, has, {LogicalType::DATE, LogicalType::INTEGER});
+		REQUIRE(binding.layout.arguments[0].type == integers);
+
+		// it does not determine a variable
+		selection = FunctionBinder::SelectFunction(*con.context, single_set, {variant});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+		selection = FunctionBinder::SelectFunction(*con.context, single_set, {string_literal});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::TEMPLATE_UNRESOLVED);
+		selection = FunctionBinder::SelectFunction(*con.context, has_set, {variant, variant});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::LIST(variant));
+
+		// nothing is deferred to ANY, which is the type of the argument itself
+		selection = FunctionBinder::SelectFunction(*con.context, wrapped_set, {variant, LogicalType::INTEGER});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+
+		// nor to a type variable by itself: the VARIANT is not passed as the decimal the other argument is
+		selection = FunctionBinder::SelectFunction(*con.context, plus_set, {decimal, variant});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 1);
+		selection = FunctionBinder::SelectFunction(*con.context, plus_double_set, {decimal, variant});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 1);
 	});
 }
 

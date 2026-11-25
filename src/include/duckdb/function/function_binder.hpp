@@ -51,7 +51,8 @@ struct ResolvedTableFunction {
 
 //! What a call determines the variables of a signature to be
 struct FunctionVariables {
-	//! The types of the type variables. SQLNULL or UNKNOWN if the arguments that determine one say nothing
+	//! The types of the type variables: normalized, and coerced to the kind of a constrained variable, e.g. integers
+	//! to DECIMAL(10,0). SQLNULL or UNKNOWN if the arguments that determine one say nothing
 	case_insensitive_map_t<LogicalType> types;
 	//! The values of the value variables. NULL if the arguments that determine one say nothing, as an unresolved
 	//! parameter does
@@ -107,9 +108,13 @@ struct ArgumentLayout {
 //!    - A parameter whose type uses no variable takes an argument that casts implicitly to that type.
 //!    - A parameter whose type uses a variable takes an argument whose type is an instance of the declared type, or
 //!      casts implicitly to the instance that is made of its own parts: INTEGER[3] is passed to T[] as INTEGER[],
-//!      and INTEGER to DECIMAL(W, S) as DECIMAL(10, 0).
-//!    - A NULL, an unresolved parameter, and a string literal that is passed to a type with arguments say nothing
-//!      about the variables.
+//!      and INTEGER to DECIMAL(W, S) as DECIMAL(10, 0). Such an argument says what the variables are.
+//!    - An argument that is not an instance of a type with arguments (T[], DECIMAL(W, S), FLOAT[N]) is deferred: it
+//!      says nothing about the variables, and is passed if it casts implicitly to the type of the parameter with the
+//!      variables as the other arguments determine them. A VARIANT and a string literal are passed to T[] this way.
+//!      Nothing is deferred to a type variable by itself, constrained or not, to a type that uses ANY, which is the
+//!      type of the argument itself, or to a value variable.
+//!    - A NULL and an unresolved parameter say nothing about the variables either, and are passed as they are.
 //!    A type variable is the promotion of the types the arguments say it is, a value variable the one value they
 //!    say it is. An overload is not a candidate if the arguments disagree about a variable, or do not determine
 //!    every variable of the return type and of the parameters that receive an argument.
@@ -121,10 +126,10 @@ struct ArgumentLayout {
 //!    2. unconstrained_arguments, fewer is better: the arguments, other than a NULL, that are passed to a parameter
 //!       whose type uses an unconstrained type variable.
 //!    3. cast_cost, lower is better: the sum of the implicit cast costs of the arguments. An argument costs the
-//!       implicit cast to the type it is passed as in step 2, which is 0 for its own type. A NULL costs the cast of
-//!       a NULL to the kind of type the parameter declares, and 5 if the parameter is declared as an unconstrained
-//!       type variable by itself. A string literal that is passed to a type with arguments that uses a variable
-//!       costs 20.
+//!       implicit cast to the type of step 2: the declared type, the instance made of its own parts, which is 0 for
+//!       its own type, or for a deferred argument the type it is passed as. A NULL costs the cast of a NULL to the
+//!       kind of type the parameter declares, and 5 if the parameter is declared as an unconstrained type variable
+//!       by itself.
 //!    4. variable_parameters, fewer is better: the arguments that are passed to a parameter whose type uses a type
 //!       variable, constrained or not.
 //!    5. declared_structure, more is better: over the arguments of rule 4, 2 for every type that the type of the
@@ -208,8 +213,7 @@ struct FunctionBinding {
 	ArgumentLayout layout;
 	//! What the call determines the variables of the overload to be: the type of every type variable, and the
 	//! value of every value variable. The return type follows from them
-	case_insensitive_map_t<LogicalType> variable_types;
-	case_insensitive_map_t<Value> variable_values;
+	FunctionVariables variables;
 
 private:
 	friend class FunctionBinder;
