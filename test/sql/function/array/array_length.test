@@ -88,3 +88,19 @@ statement error
 SELECT array_length(a, 2) FROM null_arrays;
 ----
 out of range
+
+# a type that has types where an array has its size is not an array
+statement error
+SELECT len({'a': 1, 'b': 2});
+----
+Binder Error: No function matches the given name and argument types
+
+statement error
+SELECT array_length({'a': 1, 'b': 2});
+----
+Binder Error: No function matches the given name and argument types
+
+query I
+SELECT len([{'a': 1, 'b': 2}]);
+----
+1

@@ -49,7 +49,12 @@ const LogType &LookupLogType(ClientContext &context, const Value &type_val) {
 
 //! The type of the log type - unstructured types are wrapped in a struct with a single field called message
 LogicalType ParseLogMessageReturnType(const ResolveReturnTypeInput &input) {
-	auto &log_type = LookupLogType(input.GetClientContext(), input.GetConstant(0));
+	auto type_val = input.GetConstant(0);
+	if (type_val.IsNull()) {
+		// a NULL log type parses to NULL
+		return LogicalType::SQLNULL;
+	}
+	auto &log_type = LookupLogType(input.GetClientContext(), type_val);
 	if (!log_type.is_structured) {
 		return LogicalType::STRUCT({{"message", LogicalType::VARCHAR}});
 	}

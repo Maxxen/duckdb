@@ -142,9 +142,12 @@ TEST_CASE("Selecting a function maps every argument to the parameter that receiv
 		const vector<idx_t> expected_parameters {0, 1, 2, 2, 3, 4};
 		REQUIRE(ParameterIndexes(binding) == expected_parameters);
 		// "**kwargs" takes any type, so its argument is passed as the type it is
-		const vector<LogicalType> expected_types {LogicalType::LIST(LogicalType::INTEGER), LogicalType::INTEGER,
-		                                          LogicalType::VARCHAR,                    LogicalType::VARCHAR,
-		                                          LogicalType::BIGINT,                     LogicalType::BOOLEAN};
+		const vector<LogicalType> expected_types {LogicalType::LIST(LogicalType::INTEGER),
+		                                          LogicalType::INTEGER,
+		                                          LogicalType::VARCHAR,
+		                                          LogicalType::VARCHAR,
+		                                          LogicalType::BIGINT,
+		                                          LogicalType::BOOLEAN};
 		REQUIRE(binding.layout.GetArgumentTypes() == expected_types);
 		REQUIRE(ReturnTypeOf(con, binding) == LogicalType::INTEGER);
 	});
@@ -471,6 +474,189 @@ TEST_CASE("Of the overloads that match at the same cost the most specific one is
 	});
 }
 
+//! A variable the parameter types of the selection cases use
+struct SelectionVariable {
+	const char *name;
+	TypeVariable::Kind kind;
+	//! The kind of type a type variable stands for, INVALID if it stands for any type
+	LogicalTypeId constraint;
+};
+
+//! A call of the overloads of a function set, and the overload it selects
+struct SelectionCase {
+	string description;
+	//! The parameter types of every overload
+	vector<vector<TypeName>> overloads;
+	vector<LogicalType> arguments;
+	//! The position in "overloads" of the one that is selected, invalid if the call is ambiguous
+	optional_idx selected;
+};
+
+//! A signature of parameters of the given types, that declares the variables the types use
+static FunctionSignature GetSelectionSignature(const vector<TypeName> &parameters) {
+	static const SelectionVariable VARIABLES[] = {{"T", TypeVariable::Kind::TYPE, LogicalTypeId::INVALID},
+	                                              {"U", TypeVariable::Kind::TYPE, LogicalTypeId::INVALID},
+	                                              {"TD", TypeVariable::Kind::TYPE, LogicalTypeId::DECIMAL},
+	                                              {"UD", TypeVariable::Kind::TYPE, LogicalTypeId::DECIMAL},
+	                                              {"TS", TypeVariable::Kind::TYPE, LogicalTypeId::STRUCT},
+	                                              {"N", TypeVariable::Kind::INTEGER, LogicalTypeId::INVALID},
+	                                              {"W", TypeVariable::Kind::INTEGER, LogicalTypeId::INVALID},
+	                                              {"S", TypeVariable::Kind::INTEGER, LogicalTypeId::INVALID},
+	                                              {"C", TypeVariable::Kind::STRING, LogicalTypeId::INVALID}};
+	FunctionSignature sig;
+	for (auto &variable : VARIABLES) {
+		bool is_used = false;
+		for (auto &parameter : parameters) {
+			is_used = is_used || parameter.Contains(Identifier(variable.name));
+		}
+		if (!is_used) {
+			continue;
+		}
+		sig.AddVariable(variable.name, variable.kind);
+		if (variable.constraint != LogicalTypeId::INVALID) {
+			sig.AddConstraint(variable.name, variable.constraint);
+		}
+	}
+	for (auto &parameter : parameters) {
+		sig.AddParameter(parameter);
+	}
+	sig.SetReturnType(LogicalType::INTEGER);
+	return sig;
+}
+
+TEST_CASE("Overloads that match at the same cost are selected by how specific they are whatever their order",
+          "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	// type variables: of any type, of a DECIMAL, of a STRUCT
+	const auto t = TypeName::VARIABLE("T");
+	const auto u = TypeName::VARIABLE("U");
+	const auto t_decimal = TypeName::VARIABLE("TD");
+	const auto u_decimal = TypeName::VARIABLE("UD");
+	const auto t_struct = TypeName::VARIABLE("TS");
+	const TypeName any(LogicalType::ANY);
+	const auto t_list = TypeName::LIST(t);
+	const auto any_list = TypeName::LIST(any);
+	// types of value variables, and types that declare the values
+	const TypeName geometry(LogicalType::GEOMETRY());
+	const TypeName geometry_c(Identifier("GEOMETRY"), {TypeName::VARIABLE("C")});
+	const auto decimal_ws = TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"));
+	const TypeName decimal_18_3(LogicalType::DECIMAL(18, 3));
+	const auto float_n = TypeName::ARRAY(LogicalType::FLOAT, TypeName::VARIABLE("N"));
+	const auto float_3 = TypeName::ARRAY(LogicalType::FLOAT, 3);
+	const auto struct_a = TypeName::STRUCT({{"a", LogicalType::INTEGER}});
+	const auto integer_list = TypeName::LIST(LogicalType::INTEGER);
+
+	con.context->RunFunctionInTransaction([&]() {
+		// the arguments of the calls
+		const auto crs = LogicalType::GEOMETRY("OGC:CRS84");
+		const auto no_crs = LogicalType::GEOMETRY();
+		const auto decimal = LogicalType::DECIMAL(18, 3);
+		const LogicalType integer = LogicalType::INTEGER;
+		const auto floats_3 = LogicalType::ARRAY(LogicalType::FLOAT, 3);
+		const auto floats_4 = LogicalType::ARRAY(LogicalType::FLOAT, 4);
+		const auto integers_3 = LogicalType::ARRAY(LogicalType::INTEGER, 3);
+		const auto a_struct = LogicalType::STRUCT({{"a", LogicalType::INTEGER}});
+		const auto integers = LogicalType::LIST(LogicalType::INTEGER);
+		const LogicalType null = LogicalType::SQLNULL;
+		const optional_idx ambiguous;
+
+		const vector<SelectionCase> cases {
+		    // a name with arguments says more than the name
+		    {"GEOMETRY(C) over GEOMETRY, a geometry of a CRS", {{geometry_c}, {geometry}}, {crs}, 0},
+		    {"GEOMETRY(C) over GEOMETRY, NULL", {{geometry_c}, {geometry}}, {null}, 0},
+		    {"DECIMAL(W, S) over T IS DECIMAL, a decimal", {{decimal_ws}, {t_decimal}}, {decimal}, 0},
+		    {"DECIMAL(W, S) over T IS DECIMAL, an integer", {{decimal_ws}, {t_decimal}}, {integer}, 0},
+		    {"DECIMAL(W, S) over T IS DECIMAL, NULL", {{decimal_ws}, {t_decimal}}, {null}, 0},
+		    // a value says more than a value variable
+		    {"FLOAT[3] over FLOAT[N], FLOAT[3]", {{float_3}, {float_n}}, {floats_3}, 0},
+		    {"FLOAT[3] over FLOAT[N], INTEGER[3]", {{float_3}, {float_n}}, {integers_3}, 0},
+		    {"FLOAT[3] over FLOAT[N], NULL", {{float_3}, {float_n}}, {null}, 0},
+		    {"DECIMAL(18, 3) over DECIMAL(W, S), DECIMAL(18, 3)", {{decimal_18_3}, {decimal_ws}}, {decimal}, 0},
+		    // a type says more than a type variable of its kind
+		    {"STRUCT(a INTEGER) over T IS STRUCT, NULL", {{struct_a}, {t_struct}}, {null}, 0},
+		    {"STRUCT(a INTEGER) over T IS STRUCT, the struct", {{struct_a}, {t_struct}}, {a_struct}, 0},
+		    {"DECIMAL(18, 3) over T IS DECIMAL, DECIMAL(18, 3)", {{decimal_18_3}, {t_decimal}}, {decimal}, 0},
+		    {"DECIMAL(18, 3) over T IS DECIMAL, NULL", {{decimal_18_3}, {t_decimal}}, {null}, 0},
+		    // overloads that say as much, or of types that have nothing to do with each other
+		    {"T and ANY, an integer", {{t}, {any}}, {integer}, ambiguous},
+		    {"T and ANY, NULL", {{t}, {any}}, {null}, ambiguous},
+		    {"T and U, an integer", {{t}, {u}}, {integer}, ambiguous},
+		    {"T[] and ANY[], a list", {{t_list}, {any_list}}, {integers}, ambiguous},
+		    {"T[] and ANY[], NULL", {{t_list}, {any_list}}, {null}, ambiguous},
+		    {"T IS DECIMAL and U IS DECIMAL, a decimal", {{t_decimal}, {u_decimal}}, {decimal}, ambiguous},
+		    {"T IS DECIMAL and U IS DECIMAL, NULL", {{t_decimal}, {u_decimal}}, {null}, ambiguous},
+		    {"DATE and TIME, NULL", {{LogicalType::DATE}, {LogicalType::TIME}}, {null}, ambiguous},
+		    // every argument counts: more for one of them and as much for the others is more
+		    {"(GEOMETRY(C), GEOMETRY(C)) over (GEOMETRY(C), GEOMETRY)",
+		     {{geometry_c, geometry_c}, {geometry_c, geometry}},
+		     {crs, crs},
+		     0},
+		    {"(FLOAT[3], FLOAT[3]) over (FLOAT[3], FLOAT[N])",
+		     {{float_3, float_3}, {float_3, float_n}},
+		     {floats_3, floats_3},
+		     0},
+		    {"(FLOAT[N], DECIMAL(W, S)) over (FLOAT[N], T IS DECIMAL)",
+		     {{float_n, decimal_ws}, {float_n, t_decimal}},
+		     {floats_3, decimal},
+		     0},
+		    {"(FLOAT[3], FLOAT[3]) over (FLOAT[3], FLOAT[N]) and (FLOAT[N], FLOAT[N])",
+		     {{float_3, float_n}, {float_n, float_n}, {float_3, float_3}},
+		     {floats_3, floats_3},
+		     2},
+		    // more for one of them and less for another is neither
+		    {"(GEOMETRY(C), GEOMETRY) and (GEOMETRY, GEOMETRY(C))",
+		     {{geometry_c, geometry}, {geometry, geometry_c}},
+		     {crs, crs},
+		     ambiguous},
+		    {"(FLOAT[3], FLOAT[N]) and (FLOAT[N], FLOAT[3])",
+		     {{float_3, float_n}, {float_n, float_3}},
+		     {floats_3, floats_3},
+		     ambiguous},
+		    {"(FLOAT[3], FLOAT[N]) and (FLOAT[N], FLOAT[3]), both over (FLOAT[N], FLOAT[N])",
+		     {{float_3, float_n}, {float_n, float_n}, {float_n, float_3}},
+		     {floats_3, floats_3},
+		     ambiguous},
+		    // no tie: only one of the overloads takes the argument
+		    {"GEOMETRY, not GEOMETRY(C), a geometry of no CRS", {{geometry_c}, {geometry}}, {no_crs}, 1},
+		    {"FLOAT[N], not FLOAT[3], FLOAT[4]", {{float_3}, {float_n}}, {floats_4}, 1},
+		    // no tie: the cost decides, a type variable of any type costs more than any cast - but less for a NULL
+		    {"INTEGER at a lower cost than T, an integer", {{LogicalType::INTEGER}, {t}}, {integer}, 0},
+		    {"T at a lower cost than INTEGER, NULL", {{LogicalType::INTEGER}, {t}}, {null}, 1},
+		    {"T IS STRUCT at a lower cost than T, a struct", {{t_struct}, {t}}, {a_struct}, 0},
+		    {"T IS DECIMAL at a lower cost than T, an integer", {{t_decimal}, {t}}, {integer}, 0},
+		    {"INTEGER[] at a lower cost than T[], a list", {{integer_list}, {t_list}}, {integers}, 0},
+		    {"T[] at a lower cost than T, a list", {{t_list}, {t}}, {integers}, 0},
+		};
+
+		for (auto &test : cases) {
+			const auto count = test.overloads.size();
+			// the overloads in the order of the case, and in the opposite order
+			for (idx_t reversed = 0; reversed < 2; reversed++) {
+				ScalarFunctionSet set("f");
+				for (idx_t i = 0; i < count; i++) {
+					auto &parameters = test.overloads[reversed ? count - 1 - i : i];
+					set.AddFunction(ScalarFunction("f", GetSelectionSignature(parameters), NoopExec));
+				}
+				INFO(test.description << (reversed ? ", overloads in the opposite order" : ""));
+				auto selection = FunctionBinder::SelectFunction(*con.context, set, test.arguments);
+				if (!test.selected.IsValid()) {
+					CHECK(!selection.IsSuccess());
+					if (!selection.IsSuccess()) {
+						CHECK(selection.GetError().GetType() == FunctionBindError::Type::AMBIGUOUS_MATCH);
+					}
+					continue;
+				}
+				CHECK(selection.IsSuccess());
+				if (selection.IsSuccess()) {
+					const auto index = selection.GetBinding().GetOverloadIndex();
+					CHECK((reversed ? count - 1 - index : index) == test.selected.GetIndex());
+				}
+			}
+		}
+	});
+}
+
 TEST_CASE("A named argument passed twice matches no overload", "[api][function_binding]") {
 	DuckDB db(nullptr);
 	Connection con(db);
@@ -482,6 +668,70 @@ TEST_CASE("A named argument passed twice matches no overload", "[api][function_b
 	REQUIRE(selection.GetError().GetType() == FunctionBindError::Type::DUPLICATE_ARGUMENT);
 	REQUIRE(selection.GetError().Cast<FunctionBindError::DuplicateArgument>().argument == 1);
 	REQUIRE(StringUtil::Contains(GetErrorMessage(selection), "Duplicate named argument"));
+}
+
+TEST_CASE("A named argument passed twice does not match a function the caller chose", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	// defaulted(a INTEGER, b INTEGER := 0) -> INTEGER: as many parameters as the call has arguments
+	FunctionSignature sig;
+	sig.AddParameter("a", LogicalType::INTEGER);
+	sig.AddParameter("b", LogicalType::INTEGER, Value::INTEGER(0));
+	sig.SetReturnType(LogicalType::INTEGER);
+	auto function = make_shared_ptr<ScalarFunction>("defaulted", std::move(sig), NoopExec);
+
+	vector<pair<Identifier, LogicalType>> named {{"a", LogicalType::INTEGER}, {"a", LogicalType::INTEGER}};
+	REQUIRE_THROWS_WITH(FunctionBinder::MatchFunction(*con.context, function, FunctionCallArguments({}, named)),
+	                    Catch::Contains("Duplicate named argument") && Catch::Contains("in 'defaulted'"));
+	// passed once, the name fills its parameter and the default the other
+	named.pop_back();
+	auto binding = FunctionBinder::MatchFunction(*con.context, function, FunctionCallArguments({}, named));
+	const vector<idx_t> parameters {0, 1};
+	REQUIRE(ParameterIndexes(binding) == parameters);
+}
+
+TEST_CASE("An argument that is cast explicitly to a type of ANY is passed as the type a literal defaults to",
+          "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	// wrap(list ANY[]) -> INTEGER
+	auto function = make_shared_ptr<ScalarFunction>(
+	    "wrap",
+	    FunctionSignature().AddParameter("list", TypeName::LIST(LogicalType::ANY)).SetReturnType(LogicalType::INTEGER),
+	    NoopExec);
+	ScalarFunctionSet set("wrap");
+	set.AddFunction(*function);
+	const auto integer_literal = LogicalType::INTEGER_LITERAL(Value::INTEGER(1));
+	const auto string_literal = LogicalType(LogicalTypeId::STRING_LITERAL);
+
+	con.context->RunFunctionInTransaction([&]() {
+		// a literal is not a list, so it is not taken when the overload is selected
+		for (auto &literal : {integer_literal, string_literal}) {
+			auto selection = FunctionBinder::SelectFunction(*con.context, set, {literal});
+			auto &failed = GetMismatches(selection);
+			REQUIRE(failed.size() == 1);
+			REQUIRE(failed[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+			REQUIRE(failed[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
+		}
+
+		// a caller that knows the function casts it to a list of what the literal is
+		auto binding = FunctionBinder::MatchFunction(*con.context, function, {integer_literal});
+		REQUIRE(binding.layout.arguments[0].type == LogicalType::LIST(LogicalType::INTEGER));
+		binding = FunctionBinder::MatchFunction(*con.context, function, {string_literal});
+		REQUIRE(binding.layout.arguments[0].type == LogicalType::LIST(LogicalType::VARCHAR));
+		binding = FunctionBinder::MatchFunction(*con.context, function, {LogicalType::DATE});
+		REQUIRE(binding.layout.arguments[0].type == LogicalType::LIST(LogicalType::DATE));
+
+		// a default that is not a list is passed as one as well, however the overload is bound
+		FunctionSignature sig;
+		sig.AddParameter("list", TypeName::LIST(LogicalType::ANY), Value::INTEGER(1));
+		sig.SetReturnType(LogicalType::INTEGER);
+		ScalarFunctionSet defaulted("wrap_default");
+		defaulted.AddFunction(ScalarFunction("wrap_default", std::move(sig), NoopExec));
+		auto selection = FunctionBinder::SelectFunction(*con.context, defaulted, FunctionCallArguments());
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::LIST(LogicalType::INTEGER));
+	});
 }
 
 //! h(value ANY, depth BIGINT := 0, *args ANY) -> "value" nested in "depth" lists

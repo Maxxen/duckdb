@@ -216,3 +216,44 @@ query III
 SELECT coalesce(NULL::VARCHAR, 'z'), list_concat(NULL::INT[], [1]), constant_or_null('a', NULL::INT)
 ----
 z	[1]	NULL
+
+# a NULL constant that the return type is resolved from: the call is NULL
+query IIII
+SELECT parse_duckdb_log_message(NULL::VARCHAR, 'x'), typeof(parse_duckdb_log_message(NULL::VARCHAR, 'x')), parse_duckdb_log_message(NULL, 'x'), typeof(parse_duckdb_log_message(NULL, 'x'))
+----
+NULL	"NULL"	NULL	"NULL"
+
+query II
+SELECT parse_duckdb_log_message(NULL::VARCHAR, NULL::VARCHAR), parse_duckdb_log_message(nullif('a', 'a'), 'x')
+----
+NULL	NULL
+
+query I
+SELECT parse_duckdb_log_message(NULL::VARCHAR, m) FROM (VALUES ('x'), ('y')) t(m)
+----
+NULL
+NULL
+
+statement ok
+PREPARE parse_log AS SELECT parse_duckdb_log_message($1, 'x')
+
+query I
+EXECUTE parse_log(NULL)
+----
+NULL
+
+query I
+EXECUTE parse_log(NULL::VARCHAR)
+----
+NULL
+
+query I
+EXECUTE parse_log('QueryLog')
+----
+{'message': x}
+
+# a log type that does not exist is still an error
+statement error
+SELECT parse_duckdb_log_message('does_not_exist', 'x')
+----
+structured_log_schema: 'does_not_exist' not found

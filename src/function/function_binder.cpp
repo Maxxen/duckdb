@@ -127,6 +127,17 @@ vector<pair<Identifier, LogicalType>> FunctionCallArguments::GetNamedTypes() con
 	return result;
 }
 
+//! The first named argument of a call that repeats the name of an earlier one, if there is one
+static optional_idx FindDuplicateArgument(const FunctionCallArguments &call) {
+	identifier_set_t seen_names;
+	for (idx_t i = call.GetPositionalCount(); i < call.GetArgumentCount(); i++) {
+		if (!seen_names.insert(call.GetArgument(i).name).second) {
+			return i;
+		}
+	}
+	return optional_idx();
+}
+
 FunctionBindResult FunctionBinder::SelectFunction(optional_ptr<ClientContext> context, const BaseFunctionSet &functions,
                                                   const FunctionCallArguments &call, bool explicit_casts,
                                                   optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
@@ -137,14 +148,11 @@ FunctionBindResult FunctionBinder::SelectFunction(optional_ptr<ClientContext> co
 FunctionBindResult FunctionBinder::SelectFunction(TypeCache &type_cache, const BaseFunctionSet &functions,
                                                   const FunctionCallArguments &call, bool explicit_casts,
                                                   optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
-	// Look for duplicate names
-	identifier_set_t seen_names;
-	for (idx_t i = call.GetPositionalCount(); i < call.GetArgumentCount(); i++) {
-		if (!seen_names.insert(call.GetArgument(i).name).second) {
-			// no overload can take the same argument twice
-			auto kind = functions.GetOverloadCount() > 0 ? functions.GetOverload(0).GetKind() : FunctionKind::SCALAR;
-			return FunctionBindError::CreateDuplicateArgument(functions.GetName(), call, i, kind);
-		}
+	auto duplicate = FindDuplicateArgument(call);
+	if (duplicate.IsValid()) {
+		// no overload can take the same argument twice
+		auto kind = functions.GetOverloadCount() > 0 ? functions.GetOverload(0).GetKind() : FunctionKind::SCALAR;
+		return FunctionBindError::CreateDuplicateArgument(functions.GetName(), call, duplicate.GetIndex(), kind);
 	}
 
 	// Try to match each overload, keeping the ones that match at the lowest cost
@@ -205,6 +213,10 @@ FunctionBinding FunctionBinder::MatchFunction(optional_ptr<ClientContext> contex
                                               const FunctionCallArguments &call,
                                               optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
 	auto name = function->GetName();
+	auto duplicate = FindDuplicateArgument(call);
+	if (duplicate.IsValid()) {
+		FunctionBindError::CreateDuplicateArgument(name, call, duplicate.GetIndex(), function->GetKind()).Throw();
+	}
 	TypeCache cache(context);
 	auto match = MatchOverload(cache, 0, std::move(function), call, true, decimal_width_limit);
 	if (!match) {
@@ -472,8 +484,8 @@ ResolveArguments(const FunctionBinding &binding, vector<unique_ptr<Expression>> 
 			continue;
 		}
 		auto i = argument.argument_index.GetIndex();
-		result.push_back(std::move(i < received_positional_count ? arguments[i]
-		                                                         : named_arguments[i - received_positional_count].second));
+		result.push_back(std::move(
+		    i < received_positional_count ? arguments[i] : named_arguments[i - received_positional_count].second));
 	}
 	return result;
 }
