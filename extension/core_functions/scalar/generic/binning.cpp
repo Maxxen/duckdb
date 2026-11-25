@@ -485,7 +485,7 @@ vector<LogicalType> SelectBinTypes(ClientContext &context, const LogicalType &mi
 	if (!selected) {
 		selected.GetError().Throw();
 	}
-	return selected.GetBinding().argument_types;
+	return selected.GetBinding().layout.GetArgumentTypes();
 }
 
 //! While internally the bins are computed over a unified type, equi_width_bins returns the type of the input MAX

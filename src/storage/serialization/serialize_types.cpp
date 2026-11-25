@@ -171,13 +171,13 @@ unique_ptr<LogicalTypeInfo> ListTypeInfo::Deserialize(Deserializer &deserializer
 
 void LogicalTypeModifier::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty<Value>(100, "value", value);
-	serializer.WritePropertyWithDefault<string>(101, "label", label);
+	serializer.WritePropertyWithDefault<Identifier>(101, "label", label);
 }
 
 LogicalTypeModifier LogicalTypeModifier::Deserialize(Deserializer &deserializer) {
 	auto value = deserializer.ReadProperty<Value>(100, "value");
 	LogicalTypeModifier result(value);
-	deserializer.ReadPropertyWithDefault<string>(101, "label", result.label);
+	deserializer.ReadPropertyWithDefault<Identifier>(101, "label", result.label);
 	return result;
 }
 

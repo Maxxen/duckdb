@@ -34,6 +34,9 @@ public:
 		if (signature.GetTypedKwargs()) {
 			throw InvalidInputException("A macro function cannot have variadic parameters.");
 		}
+		if (!signature.GetVariables().empty()) {
+			throw InvalidInputException("A macro function cannot have type variables.");
+		}
 		signature.Verify();
 
 		auto macro = ParseBody();
@@ -56,7 +59,7 @@ public:
 			// ANY leaves the parameter untyped, as a parameter declared without a type
 			auto parameter_type = parameter.GetTypeName().IsBuiltinType(LogicalTypeId::ANY)
 			                          ? LogicalType(LogicalType::UNKNOWN)
-			                          : FunctionBinder::BindTypePattern(nullptr, parameter.GetTypeName(), signature);
+			                          : FunctionBinder::BindTypeName(nullptr, parameter.GetTypeName());
 			if (parameter.HasDefaultValue()) {
 				auto default_value = *parameter.GetDefaultValue();
 				if (parameter_type.id() != LogicalTypeId::UNKNOWN) {

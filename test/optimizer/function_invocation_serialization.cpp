@@ -475,8 +475,18 @@ static unique_ptr<FunctionData> KeywordScanBind(ClientContext &context, TableFun
 	auto param_idx = signature.GetParameterIndexByName("opt");
 	auto option = signature.GetTypedKwargs() ? signature.GetTypedKwargs()->Find("opt") : nullptr;
 	REQUIRE((param_idx.IsValid() || option));
-	auto type = param_idx.IsValid() ? input.table_function.GetParameterTypes()[param_idx.GetIndex()]
-	                                : FunctionBinder::BindTypeName(&context, option->type);
+	LogicalType type;
+	if (param_idx.IsValid()) {
+		// the function is bound with every keyword-only parameter, the named arguments follow the positional ones
+		auto &function = input.table_function;
+		auto &named_arguments = function.GetNamedArguments();
+		auto named_idx = std::find(named_arguments.begin(), named_arguments.end(), Identifier("opt"));
+		REQUIRE(named_idx != named_arguments.end());
+		type = function.GetArguments()[function.GetPositionalArgumentCount() +
+		                               NumericCast<idx_t>(named_idx - named_arguments.begin())];
+	} else {
+		type = FunctionBinder::BindTypeName(&context, option->type);
+	}
 	auto entry = input.named_parameters.find("opt");
 	types.push_back(type);
 	names.emplace_back("opt");

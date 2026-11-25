@@ -29,12 +29,12 @@ SELECT struct_extract_at('{"a":1}'::JSON::VARIANT, 1);
 statement error
 SELECT struct_extract(NULL::VARIANT, 'a');
 ----
-An argument of type VARIANT cannot be passed as STRUCT
+Argument 1 of type VARIANT cannot be implicitly cast to STRUCT
 
 statement error
 SELECT struct_extract_at(NULL::VARIANT, 1);
 ----
-An argument of type VARIANT cannot be passed as STRUCT
+Argument 1 of type VARIANT cannot be implicitly cast to STRUCT
 
 # the VARIANT-aware path still works
 query I

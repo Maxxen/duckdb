@@ -1,5 +1,6 @@
 #pragma once
 
+#include "duckdb/common/identifier.hpp"
 #include "duckdb/common/string.hpp"
 #include "duckdb/common/types/value.hpp"
 
@@ -13,12 +14,12 @@ public:
 	explicit LogicalTypeModifier(Value value_p) : value(std::move(value_p)) {
 	}
 	string ToString() const {
-		return label.empty() ? value.ToString() : label;
+		return label.empty() ? value.ToString() : label.GetIdentifierName();
 	}
 
 public:
 	Value value;
-	string label;
+	Identifier label;
 
 	void Serialize(Serializer &serializer) const;
 	static LogicalTypeModifier Deserialize(Deserializer &source);

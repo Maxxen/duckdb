@@ -11,6 +11,7 @@
 #include "duckdb/common/numeric_utils.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/type_visitor.hpp"
+#include "duckdb/common/extension_type_info.hpp"
 #include "duckdb/common/types/decimal.hpp"
 #include "duckdb/common/types/hash.hpp"
 #include "duckdb/common/types/string_type.hpp"
@@ -292,6 +293,124 @@ LogicalType LogicalType::CreateImmortal(LogicalTypeId id, unique_ptr<LogicalType
 
 hash_t LogicalType::Hash() const {
 	return type_info_.get().Hash();
+}
+
+//! The type modifiers an aliased type was constructed with, if it keeps any
+static optional_ptr<const vector<LogicalTypeModifier>> GetTypeModifiers(const LogicalType &type) {
+	auto extension_info = type.GetExtensionInfo();
+	if (!extension_info || extension_info->modifiers.empty()) {
+		return nullptr;
+	}
+	return &extension_info->modifiers;
+}
+
+idx_t LogicalType::GetParameterCount() const {
+	auto modifiers = GetTypeModifiers(*this);
+	if (modifiers) {
+		return modifiers->size();
+	}
+	switch (id()) {
+	case LogicalTypeId::DECIMAL:
+	case LogicalTypeId::ARRAY:
+	case LogicalTypeId::MAP:
+	case LogicalTypeId::LIST:
+	case LogicalTypeId::STRUCT:
+	case LogicalTypeId::TUPLE:
+	case LogicalTypeId::UNION:
+	case LogicalTypeId::ENUM:
+		if (!HasParameters()) {
+			// a type of the kind that is not made of anything, e.g. a DECIMAL without a width
+			return 0;
+		}
+		break;
+	default:
+		break;
+	}
+	switch (id()) {
+	case LogicalTypeId::DECIMAL:
+	case LogicalTypeId::ARRAY:
+	case LogicalTypeId::MAP:
+		return 2;
+	case LogicalTypeId::LIST:
+		return 1;
+	case LogicalTypeId::STRUCT:
+	case LogicalTypeId::TUPLE:
+		return StructType::GetChildCount(*this);
+	case LogicalTypeId::UNION:
+		return UnionType::GetMemberCount(*this);
+	case LogicalTypeId::ENUM:
+		return EnumType::GetSize(*this);
+	case LogicalTypeId::VARCHAR:
+		return StringType::GetCollation(*this).empty() ? 0 : 1;
+	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
+		return GeoType::HasCRS(*this) ? 1 : 0;
+	default:
+		return 0;
+	}
+}
+
+Value LogicalType::GetParameter(idx_t index) const {
+	if (index >= GetParameterCount()) {
+		throw InternalException("Type %s has no parameter %llu", ToString(), index);
+	}
+	auto modifiers = GetTypeModifiers(*this);
+	if (modifiers) {
+		return (*modifiers)[index].value;
+	}
+	switch (id()) {
+	case LogicalTypeId::DECIMAL:
+		return index == 0 ? Value::UINTEGER(DecimalType::GetWidth(*this))
+		                  : Value::UINTEGER(DecimalType::GetScale(*this));
+	case LogicalTypeId::LIST:
+		return Value::TYPE(ListType::GetChildType(*this));
+	case LogicalTypeId::ARRAY:
+		if (index == 0) {
+			return Value::TYPE(ArrayType::GetChildType(*this));
+		}
+		// an array of any size has none
+		return ArrayType::IsAnySize(*this) ? Value(LogicalType::BIGINT)
+		                                   : Value::BIGINT(NumericCast<int64_t>(ArrayType::GetSize(*this)));
+	case LogicalTypeId::MAP:
+		return Value::TYPE(index == 0 ? MapType::KeyType(*this) : MapType::ValueType(*this));
+	case LogicalTypeId::STRUCT:
+	case LogicalTypeId::TUPLE:
+		return Value::TYPE(StructType::GetChildType(*this, index));
+	case LogicalTypeId::UNION:
+		return Value::TYPE(UnionType::GetMemberType(*this, index));
+	case LogicalTypeId::ENUM:
+		return Value(EnumType::GetString(*this, index).GetString());
+	case LogicalTypeId::VARCHAR:
+		return Value(StringType::GetCollation(*this));
+	case LogicalTypeId::GEOMETRY:
+	case LogicalTypeId::GEOGRAPHY:
+		return Value(GeoType::GetCRS(*this).GetDefinition());
+	default:
+		throw InternalException("Type %s has no parameters", ToString());
+	}
+}
+
+const Identifier &LogicalType::GetParameterName(idx_t index) const {
+	static const Identifier UNNAMED;
+	static const Identifier COLLATION("collation");
+	if (index >= GetParameterCount()) {
+		throw InternalException("Type %s has no parameter %llu", ToString(), index);
+	}
+	auto modifiers = GetTypeModifiers(*this);
+	if (modifiers) {
+		return (*modifiers)[index].label;
+	}
+	switch (id()) {
+	case LogicalTypeId::STRUCT:
+	case LogicalTypeId::TUPLE:
+		return StructType::IsUnnamed(*this) ? UNNAMED : StructType::GetChildName(*this, index);
+	case LogicalTypeId::UNION:
+		return UnionType::GetMemberName(*this, index);
+	case LogicalTypeId::VARCHAR:
+		return COLLATION;
+	default:
+		return UNNAMED;
+	}
 }
 
 bool LogicalType::HasParameters() const {

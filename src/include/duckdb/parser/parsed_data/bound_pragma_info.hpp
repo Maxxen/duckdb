@@ -13,10 +13,9 @@
 namespace duckdb {
 
 struct BoundPragmaInfo {
-	BoundPragmaInfo(PragmaFunction function_p, vector<Value> parameters_p, named_argument_map_t named_parameters_p,
-	                vector<LogicalType> parameter_types_p)
+	BoundPragmaInfo(PragmaFunction function_p, vector<Value> parameters_p, named_argument_map_t named_parameters_p)
 	    : function(std::move(function_p)), parameters(std::move(parameters_p)),
-	      named_parameters(std::move(named_parameters_p)), parameter_types(std::move(parameter_types_p)) {
+	      named_parameters(std::move(named_parameters_p)) {
 	}
 
 	PragmaFunction function;
@@ -24,8 +23,6 @@ struct BoundPragmaInfo {
 	vector<Value> parameters;
 	//! Named parameter list (if any)
 	named_argument_map_t named_parameters;
-	//! The type every parameter of the function is bound to
-	vector<LogicalType> parameter_types;
 };
 
 } // namespace duckdb

@@ -414,6 +414,14 @@ struct LogicalType {
 	//! Whether this type carries the type info its id is parameterized by (e.g. the child type of a LIST). Does not
 	//! look at child types - false for a bare LogicalTypeId::LIST, true for LIST(ANY).
 	DUCKDB_API bool HasParameters() const;
+	//! The parameters the type is made of - the dual of constructing it from arguments: the width and scale of a
+	//! DECIMAL, the child type of a LIST, the fields of a STRUCT, the type modifiers of an aliased type that keeps
+	//! them. A type of a kind that keeps none has no parameters
+	DUCKDB_API idx_t GetParameterCount() const;
+	//! The value of a parameter: a TYPE value if the parameter is a type
+	DUCKDB_API Value GetParameter(idx_t index) const;
+	//! The name of a parameter, empty if it has none (e.g. the child type of a LIST, the fields of an unnamed STRUCT)
+	DUCKDB_API const Identifier &GetParameterName(idx_t index) const;
 
 	//! Copies type info, keeping immortal and enum infos shared.
 	LogicalType Copy() const;

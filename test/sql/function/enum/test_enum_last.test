@@ -13,4 +13,4 @@ purple
 statement error
 SELECT enum_last('bla')
 ----
-<REGEX>:.*Binder Error.*cannot be passed as ENUM.*
+<REGEX>:.*Binder Error.*cannot be implicitly cast to ENUM.*

@@ -112,79 +112,37 @@ Value CastArgument(const Identifier &type_name, const string &arg_name, const Va
 	return *result;
 }
 
-//! Reorder the call arguments into the constructor's declared parameter order, filling in defaults, and cast every
-//! value to the type its parameter declares. Any argument beyond the declared parameters is appended in call order
-//! with its name preserved.
+//! The modifiers a constructor is bound with: the call arguments in the order of the parameters that receive them,
+//! with the default of every parameter the call leaves out, each cast to the type it is passed as. What "*args" and
+//! "**kwargs" receive follows in call order, with its name preserved.
 vector<TypeArgument> NormalizeArguments(const Identifier &type_name, const FunctionBinding &binding,
                                         const vector<TypeArgument> &arguments, QueryLocation type_location) {
 	const auto &sig = binding.GetFunction().GetSignature();
-	// the types the parameters of the constructor are bound to
-	auto &parameter_types = binding.parameter_types;
-	const auto param_count = sig.GetPositionalParameterCount();
-
 	vector<TypeArgument> result;
-	vector<optional_ptr<const TypeArgument>> slots(param_count);
-	// the position is the argument's index in the call, used to refer to unnamed arguments in errors
-	vector<pair<idx_t, reference<const TypeArgument>>> varargs;
-
-	idx_t positional_count = 0;
-	for (idx_t i = 0; i < arguments.size(); i++) {
-		auto &arg = arguments[i];
-		if (arg.HasName()) {
+	for (auto &bound : binding.layout.arguments) {
+		auto &param = sig.GetParameter(bound.parameter_index);
+		if (!bound.argument_index.IsValid()) {
+			// a parameter filled in from its default has no source text - point at the type instead
+			auto arg_name = ArgumentName(param.GetName(), bound.parameter_index);
+			result.emplace_back(
+			    param.GetName().GetIdentifierName(),
+			    CastArgument(type_name, arg_name, *param.GetDefaultValue(), bound.type, type_location), type_location);
 			continue;
 		}
-		if (positional_count < param_count) {
-			slots[positional_count] = arg;
-		} else {
-			varargs.emplace_back(i, arg);
-		}
-		positional_count++;
-	}
-
-	for (idx_t i = 0; i < arguments.size(); i++) {
-		auto &arg = arguments[i];
-		if (!arg.HasName()) {
-			continue;
-		}
-		auto name = Identifier(arg.GetName());
-		auto param_idx = sig.GetParameterIndexByName(name);
-		if (!param_idx.IsValid()) {
-			// not a declared parameter - it can only be a named vararg
-			varargs.emplace_back(i, arg);
-			continue;
-		}
-		auto index = param_idx.GetIndex();
-		if (slots[index]) {
-			throw BinderException(arg.GetQueryLocation(),
-			                      "Type parameter %s for type %s was provided both by position and by name",
-			                      sig.GetParameter(index).GetName(), type_name);
-		}
-		slots[index] = arg;
-	}
-
-	for (idx_t i = 0; i < param_count; i++) {
-		auto &param = sig.GetParameter(i);
-		auto supplied = slots[i];
-		// a parameter filled in from its default has no source text - point at the type instead
-		auto location = supplied ? supplied->GetQueryLocation() : type_location;
-		optional_ptr<const Value> value = supplied ? &supplied->GetValue() : param.GetDefaultValue().get();
-		if (!value) {
-			throw BinderException(type_location, "Missing type parameter %s for type %s", param.GetName(), type_name);
-		}
-		auto arg_name = ArgumentName(param.GetName(), i);
-		result.emplace_back(param.GetName().GetIdentifierName(),
-		                    CastArgument(type_name, arg_name, *value, parameter_types[i], location), location);
-	}
-
-	for (auto &entry : varargs) {
-		auto &arg = entry.second.get();
-		auto arg_name = ArgumentName(Identifier(arg.GetName()), entry.first);
+		// the positional arguments of the call come before the named ones, so this is the argument's index in the call
+		auto position = bound.argument_index.GetIndex();
+		auto &arg = arguments[position];
 		auto location = arg.GetQueryLocation();
-		// a named modifier is received by "**kwargs", an unnamed one by "*args"
-		auto param_index = arg.HasName() ? sig.GetKwargsIndex() : sig.GetArgsIndex();
-		LogicalType target = param_index.IsValid() ? parameter_types[param_index.GetIndex()] : LogicalType::ANY;
-		result.emplace_back(arg.GetName(), CastArgument(type_name, arg_name, arg.GetValue(), target, location),
-		                    location);
+		if (param.IsVariadic()) {
+			// referred to by the name it was passed with, or by its position in the call
+			auto arg_name = ArgumentName(Identifier(arg.GetName()), position);
+			result.emplace_back(arg.GetName(), CastArgument(type_name, arg_name, arg.GetValue(), bound.type, location),
+			                    location);
+			continue;
+		}
+		auto arg_name = ArgumentName(param.GetName(), bound.parameter_index);
+		result.emplace_back(param.GetName().GetIdentifierName(),
+		                    CastArgument(type_name, arg_name, arg.GetValue(), bound.type, location), location);
 	}
 	return result;
 }

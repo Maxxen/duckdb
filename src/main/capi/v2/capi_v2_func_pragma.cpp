@@ -36,11 +36,20 @@ static auto CV2PragmaInvoke(ClientContext &context, const FunctionParameters &pa
 	auto &info = function.function_info->Cast<CV2PragmaFunctionInfo>();
 	auto &signature = function.GetSignature();
 
-	// the binder places the arguments as it does for a table function, so the call is laid out the same way
+	// the binder folds every argument the function is bound with, placed as it places those of a table function, so
+	// the call is laid out as the values are
 	BoundSimpleFunction bound_function;
 	bound_function.SetName(function.name);
-	bound_function.SetCallArguments(signature, parameters.parameter_types, parameters.values,
-	                                parameters.named_parameters);
+	auto &arguments = bound_function.GetArguments();
+	vector<Identifier> named_arguments;
+	for (auto &value : parameters.values) {
+		arguments.push_back(value.type());
+	}
+	for (auto &entry : parameters.named_parameters) {
+		named_arguments.push_back(entry.first);
+		arguments.push_back(entry.second.type());
+	}
+	bound_function.SetNamedArguments(parameters.values.size(), std::move(named_arguments));
 	CV2ConstantBindInfo bind_info(bound_function, signature, info.user_data ? info.user_data->GetData() : nullptr,
 	                              parameters.values, parameters.named_parameters);
 	bind_info.bind_data_error = "Pragma functions have no bind data";

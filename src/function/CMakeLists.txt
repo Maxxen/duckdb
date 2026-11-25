@@ -25,6 +25,7 @@ add_library_unity(
   encoding_function.cpp
   function.cpp
   function_binder.cpp
+  function_binder_matcher.cpp
   function_binder_result.cpp
   function_list.cpp
   function_set.cpp

@@ -287,7 +287,6 @@ BoundStatement Binder::BindTableFunctionInternal(BoundTableFunction &table_funct
 	optional_idx ordinality_column_id;
 	// the function binder has placed them already, but a direct bind may not have done so
 	table_function.FillNamedDefaults(context, named_parameters);
-	table_function.SetCallArguments(parameters, named_parameters);
 	if (table_function.bind || table_function.bind_replace || table_function.bind_operator) {
 		TableFunctionBindInput bind_input(parameters, named_parameters, input_table_types, input_table_names,
 		                                  table_function.function_info.get(), this, table_function, ref, input_plan);
@@ -550,19 +549,12 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 		}
 	}
 	if (parameters.empty() && subquery.plan) {
-		// the arguments are the columns of a subquery, so the declared types apply to those instead - the function
-		// binder casts the folded constants of every other call shape
-		const auto &signature = table_function.GetSignature();
-		auto &parameter_types = table_function.GetParameterTypes();
-		auto args_index = signature.GetArgsIndex();
-		for (idx_t i = 0; i < input_table_types.size(); i++) {
-			if (i >= signature.GetPositionalParameterCount() && !args_index.IsValid()) {
-				break;
-			}
-			auto &target_type = i < signature.GetPositionalParameterCount() ? parameter_types[i]
-			                                                                : parameter_types[args_index.GetIndex()];
-			if (target_type != LogicalType::ANY && target_type != LogicalType::POINTER &&
-			    target_type.id() != LogicalTypeId::LIST) {
+		// the arguments are the columns of a subquery, so the types they are passed as apply to those instead - the
+		// function binder casts the folded constants of every other call shape
+		auto &argument_types = table_function.GetArguments();
+		for (idx_t i = 0; i < input_table_types.size() && i < table_function.GetPositionalArgumentCount(); i++) {
+			auto &target_type = argument_types[i];
+			if (target_type != LogicalType::POINTER && target_type.id() != LogicalTypeId::LIST) {
 				input_table_types[i] = target_type;
 			}
 		}

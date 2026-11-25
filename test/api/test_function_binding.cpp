@@ -27,6 +27,24 @@ static ScalarFunctionSet GetTemplatedSet() {
 	return set;
 }
 
+//! The parameter that receives each argument a function is bound with
+static vector<idx_t> ParameterIndexes(const FunctionBinding &binding) {
+	vector<idx_t> result;
+	for (auto &argument : binding.layout.arguments) {
+		result.push_back(argument.parameter_index);
+	}
+	return result;
+}
+
+//! The argument of the call each argument a function is bound with is
+static vector<idx_t> ArgumentIndexes(const FunctionBinding &binding) {
+	vector<idx_t> result;
+	for (auto &argument : binding.layout.arguments) {
+		result.push_back(argument.argument_index.GetIndex());
+	}
+	return result;
+}
+
 //! g(a INTEGER, b BIGINT), g(a BIGINT, b INTEGER), g(a VARCHAR)
 static ScalarFunctionSet GetOverloadedSet() {
 	ScalarFunctionSet set("g");
@@ -77,7 +95,8 @@ TEST_CASE("Argument mapping preserves defaults, templates and keyword restrictio
 	REQUIRE(selection.IsSuccess());
 	REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::INTEGER);
 	const vector<idx_t> identity {0, 1};
-	REQUIRE(selection.GetBinding().argument_to_parameters == identity);
+	REQUIRE(ParameterIndexes(selection.GetBinding()) == identity);
+	REQUIRE(ArgumentIndexes(selection.GetBinding()) == identity);
 
 	// An omitted parameter still contributes its default to template deduction.
 	selection = FunctionBinder::SelectFunction(*con.context, set, {LogicalType::INTEGER});
@@ -88,8 +107,10 @@ TEST_CASE("Argument mapping preserves defaults, templates and keyword restrictio
 	vector<pair<Identifier, LogicalType>> reversed {{"b", LogicalType::BIGINT}, {"a", LogicalType::INTEGER}};
 	selection = FunctionBinder::SelectFunction(*con.context, set, {no_positional, reversed});
 	REQUIRE(selection.IsSuccess());
+	// the arguments are bound in the order of the parameters, whatever order the call passes them in
 	const vector<idx_t> reordered {1, 0};
-	REQUIRE(selection.GetBinding().argument_to_parameters == reordered);
+	REQUIRE(ParameterIndexes(selection.GetBinding()) == identity);
+	REQUIRE(ArgumentIndexes(selection.GetBinding()) == reordered);
 	REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::BIGINT);
 
 	// Equal argument and parameter counts do not make a keyword-only parameter positional.
@@ -119,10 +140,12 @@ TEST_CASE("Selecting a function maps every argument to the parameter that receiv
 		// list, value, the two arguments "*args" receives, the keyword-only parameter, and "**kwargs"
 		auto &binding = selection.GetBinding();
 		const vector<idx_t> expected_parameters {0, 1, 2, 2, 3, 4};
-		REQUIRE(binding.argument_to_parameters == expected_parameters);
+		REQUIRE(ParameterIndexes(binding) == expected_parameters);
+		// "**kwargs" takes any type, so its argument is passed as the type it is
 		const vector<LogicalType> expected_types {LogicalType::LIST(LogicalType::INTEGER), LogicalType::INTEGER,
-		                                          LogicalType::VARCHAR, LogicalType::BIGINT, LogicalType::ANY};
-		REQUIRE(binding.parameter_types == expected_types);
+		                                          LogicalType::VARCHAR,                    LogicalType::VARCHAR,
+		                                          LogicalType::BIGINT,                     LogicalType::BOOLEAN};
+		REQUIRE(binding.layout.GetArgumentTypes() == expected_types);
 		REQUIRE(ReturnTypeOf(con, binding) == LogicalType::INTEGER);
 	});
 }
@@ -162,9 +185,9 @@ TEST_CASE("Selecting a function deduces the templates of the overload", "[api][f
 		auto selection = FunctionBinder::SelectFunction(*con.context, set,
 		                                                {LogicalType::LIST(LogicalType::INTEGER), LogicalType::BIGINT});
 		REQUIRE(selection.IsSuccess());
-		auto &parameter_types = selection.GetBinding().parameter_types;
-		REQUIRE(parameter_types[0] == LogicalType::LIST(LogicalType::BIGINT));
-		REQUIRE(parameter_types[1] == LogicalType::BIGINT);
+		auto argument_types = selection.GetBinding().layout.GetArgumentTypes();
+		REQUIRE(argument_types[0] == LogicalType::LIST(LogicalType::BIGINT));
+		REQUIRE(argument_types[1] == LogicalType::BIGINT);
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::BIGINT);
 
 		// arguments that determine conflicting types for the template do not match the overload
@@ -195,6 +218,43 @@ TEST_CASE("Selecting a function deduces the templates of the overload", "[api][f
 	});
 }
 
+TEST_CASE("A struct parameter of type variables takes the fields of a struct by name", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	con.context->RunFunctionInTransaction([&]() {
+		// second<T, U>(s STRUCT(a T, b U)) -> U
+		ScalarFunctionSet set("second");
+		set.AddFunction(ScalarFunction(
+		    "second",
+		    FunctionSignature()
+		        .AddVariable("T")
+		        .AddVariable("U")
+		        .AddParameter("s", TypeName::STRUCT({{"a", TypeName::VARIABLE("T")}, {"b", TypeName::VARIABLE("U")}}))
+		        .SetReturnType(TypeName::VARIABLE("U")),
+		    NoopExec));
+		const auto declared = LogicalType::STRUCT({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}});
+
+		auto selection = FunctionBinder::SelectFunction(*con.context, set, {declared});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == declared);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::VARCHAR);
+
+		// fields in another order are matched by name, the argument is cast to the order the parameter declares
+		const auto reordered = LogicalType::STRUCT({{"b", LogicalType::VARCHAR}, {"a", LogicalType::INTEGER}});
+		selection = FunctionBinder::SelectFunction(*con.context, set, {reordered});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variable_types.at("T") == LogicalType::INTEGER);
+		REQUIRE(selection.GetBinding().variable_types.at("U") == LogicalType::VARCHAR);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == declared);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::VARCHAR);
+
+		// a struct without one of the fields is not taken
+		const auto other = LogicalType::STRUCT({{"a", LogicalType::INTEGER}, {"c", LogicalType::VARCHAR}});
+		selection = FunctionBinder::SelectFunction(*con.context, set, {other});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+	});
+}
+
 TEST_CASE("Selecting a function determines the value variables of the overload", "[api][function_binding]") {
 	DuckDB db(nullptr);
 	Connection con(db);
@@ -216,9 +276,8 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		auto selection =
 		    FunctionBinder::SelectFunction(*con.context, zeros, {FunctionCallArgument::Constant(Value::INTEGER(3))});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().parameter_types[0] == LogicalType::BIGINT);
-		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
-		        LogicalType::ARRAY(LogicalType::DOUBLE, 3));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::BIGINT);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::ARRAY(LogicalType::DOUBLE, 3));
 		REQUIRE(selection.GetBinding().variable_values.at("N") == Value::BIGINT(3));
 
 		// any constant expression does, an argument that is not constant does not match
@@ -226,8 +285,7 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		arguments.push_back(make_uniq<BoundConstantExpression>(Value::INTEGER(4)));
 		selection = FunctionBinder::SelectFunction(*con.context, zeros, arguments);
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
-		        LogicalType::ARRAY(LogicalType::DOUBLE, 4));
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::ARRAY(LogicalType::DOUBLE, 4));
 		arguments.clear();
 		arguments.push_back(make_uniq<BoundReferenceExpression>(LogicalType::INTEGER, 0U));
 		selection = FunctionBinder::SelectFunction(*con.context, zeros, arguments);
@@ -246,7 +304,7 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		                                NoopExec));
 		selection = FunctionBinder::SelectFunction(*con.context, same, {int_array, bigint_array});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().parameter_types[0] == bigint_array);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == bigint_array);
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == bigint_array);
 		REQUIRE(selection.GetBinding().variable_types.at("T") == LogicalType::BIGINT);
 		REQUIRE(selection.GetBinding().variable_values.at("N") == Value::BIGINT(3));
@@ -266,7 +324,8 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		REQUIRE(selection.GetBinding().variable_values.at("N") == Value::BIGINT(3));
 		selection = FunctionBinder::SelectFunction(*con.context, same, {LogicalType::SQLNULL, LogicalType::SQLNULL});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(ArrayType::IsAnySize(selection.GetBinding().parameter_types[0]));
+		REQUIRE(selection.GetBinding().variable_values.at("N").IsNull());
+		REQUIRE(ArrayType::IsAnySize(selection.GetBinding().layout.arguments[0].type));
 
 		// rescaled<W: INTEGER, S: INTEGER>(x DECIMAL(W, S)) -> DECIMAL(W, S): also of the decimal a number is passed as
 		TypeName decimal(Identifier("DECIMAL"), {TypeName(Identifier("W")), TypeName(Identifier("S"))});
@@ -283,7 +342,7 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::DECIMAL(12, 4));
 		selection = FunctionBinder::SelectFunction(*con.context, rescaled, {LogicalType::INTEGER});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().parameter_types[0] == LogicalType::DECIMAL(10, 0));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::DECIMAL(10, 0));
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::DECIMAL(10, 0));
 	});
 }
@@ -398,7 +457,7 @@ TEST_CASE("Of the overloads that match at the same cost the most specific one is
 		auto selection = FunctionBinder::SelectFunction(*con.context, crs, {geometry_crs});
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
-		REQUIRE(selection.GetBinding().parameter_types[0] == geometry_crs);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == geometry_crs);
 
 		// one without does not determine the variable
 		selection = FunctionBinder::SelectFunction(*con.context, crs, {LogicalType::GEOMETRY()});

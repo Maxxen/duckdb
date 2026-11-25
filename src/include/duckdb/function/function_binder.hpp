@@ -18,6 +18,7 @@
 #include "duckdb/common/enums/order_type.hpp"
 #include "duckdb/common/optional.hpp"
 #include "duckdb/common/query_location.hpp"
+#include "duckdb/common/result.hpp"
 
 #include <variant>
 
@@ -48,17 +49,51 @@ struct ResolvedTableFunction {
 	named_argument_map_t named_parameters;
 };
 
-//! What a call determines the type variables of a signature to be: for each variable the types it was inferred to
-//! be, in the order they were inferred - the last one is the type it stands for
-using variable_types_t = case_insensitive_map_t<vector<LogicalType>>;
 
 //! What a call determines the variables of a signature to be
 struct FunctionVariables {
-	//! The types of the type variables
-	variable_types_t types;
+	//! The types of the type variables. SQLNULL or UNKNOWN if the arguments that determine one say nothing
+	case_insensitive_map_t<LogicalType> types;
 	//! The values of the value variables. NULL if the arguments that determine one say nothing, as an unresolved
 	//! parameter does
 	case_insensitive_map_t<Value> values;
+};
+
+//! An argument a function is bound with
+struct BoundArgument {
+	//! The parameter of the overload that receives it
+	idx_t parameter_index;
+	//! The argument of the call it is, the positional arguments counted before the named ones - invalid for the
+	//! default of a parameter the call leaves out
+	optional_idx argument_index;
+	//! The type it is passed as: the type of the parameter that receives it, where ANY stands for the type of the
+	//! argument itself
+	LogicalType type;
+
+	bool IsDefaultArgument() const { 
+		return !argument_index.IsValid();
+	}
+};
+
+//! How the arguments of a call are passed to the parameters of an overload
+struct ArgumentLayout {
+	//! The arguments the function is bound with, ordered by the parameter that receives them: an argument of the
+	//! call, or the default of a parameter the call leaves out. "*args" and "**kwargs" receive any number of them
+	vector<BoundArgument> arguments;
+	//! How many of them are passed by position, and the names of the ones that follow: the keyword-only parameters,
+	//! and what "**kwargs" receives
+	idx_t positional_count = 0;
+	vector<Identifier> named_arguments;
+
+	//! The types the arguments are passed as
+	vector<LogicalType> GetArgumentTypes() const {
+		vector<LogicalType> result;
+		result.reserve(arguments.size());
+		for (auto &argument : arguments) {
+			result.push_back(argument.type);
+		}
+		return result;
+	}
 };
 
 //! An overload that matches a call, and how the arguments of the call are passed to it
@@ -84,20 +119,8 @@ struct FunctionBinding {
 
 	//! The cost of casting the arguments to the parameters of the overload
 	idx_t cost = 0;
-	//! The parameter of the overload that receives each argument - the positional arguments, followed by the named
-	//! ones. Arguments received by "*args" or "**kwargs" map to that parameter
-	vector<idx_t> argument_to_parameters;
-	//! The type of every parameter of the overload, with the templates the arguments and defaults determine
-	//! substituted
-	vector<LogicalType> parameter_types;
-	//! The type of every argument the function is bound with, in the order of its parameters: an argument has the
-	//! type of the parameter that receives it, where ANY stands for the type of the argument itself. A parameter the
-	//! call leaves out is filled by its default
-	vector<LogicalType> argument_types;
-	//! How many of those arguments are passed by position, and the names of the ones that follow them: the
-	//! keyword-only parameters, and what "**kwargs" receives
-	idx_t positional_count = 0;
-	vector<Identifier> named_argument_names;
+	//! The arguments the function is bound with
+	ArgumentLayout layout;
 	//! What the call determines the variables of the overload to be: the type of every type variable, and the
 	//! value of every value variable. The return type follows from them
 	case_insensitive_map_t<LogicalType> variable_types;
@@ -245,8 +268,6 @@ public:
 		//! The types the template was inferred to be, in the order they were inferred, followed by the type that
 		//! conflicts with them
 		vector<LogicalType> inferred_types;
-		//! The kind of type the template stands for, if the conflicting type is not of that kind
-		LogicalTypeId constraint = LogicalTypeId::INVALID;
 		//! For a value variable: the value it was determined to be, and the value that conflicts with it
 		vector<Value> inferred_values;
 
@@ -478,10 +499,6 @@ public:
 	//! The type a type name stands for: a type of the catalog, or LAMBDA / TABLE. Without a ClientContext only the
 	//! built-in types are found
 	DUCKDB_API static LogicalType BindTypeName(optional_ptr<ClientContext> context, const TypeName &name);
-	//! The type an argument is matched against before a call determines the type variables of a signature: a type
-	//! variable stands for any type (ANY), or for any type of the kind it is constrained to
-	DUCKDB_API static LogicalType BindTypePattern(optional_ptr<ClientContext> context, const TypeName &name,
-	                                              const FunctionSignature &signature);
 
 	//! How a call binds to a function it is known to call - the arguments are cast explicitly. Throws if the call does
 	//! not fit the signature of the function
@@ -696,10 +713,13 @@ private:
 
 	//! Whether an overload matches a call - with how the call binds to it if it does, and why not if it does not. With
 	//! explicit casts, an argument that cannot be implicitly cast to its parameter is accepted too
-	static std::variant<FunctionBinding, FunctionMismatch>
+	static Result<FunctionBinding, FunctionMismatch>
 	MatchOverload(TypeCache &cache, idx_t overload, shared_ptr<const SimpleFunction> function,
 	              const FunctionCallArguments &call, bool explicit_casts,
 	              optional_ptr<const DecimalWidthLimit> decimal_width_limit = nullptr);
+	//! Whether an overload declares more about the arguments of a call than another one that matches it as well: the
+	//! type of a parameter says more than a type variable, and a variable of a kind more than one of any type
+	static bool IsMoreSpecific(const FunctionBinding &left, const FunctionBinding &right);
 	//! SelectFunction, with the types constructed before
 	static FunctionBindResult SelectFunction(TypeCache &cache, const BaseFunctionSet &functions,
 	                                         const FunctionCallArguments &call, bool explicit_casts,

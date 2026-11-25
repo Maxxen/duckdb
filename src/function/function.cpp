@@ -363,6 +363,22 @@ static bool UsesVariable(const FunctionSignature &signature, const TypeName &typ
 	return false;
 }
 
+//! Whether a type uses ANY, and whether it uses a type variable of the signature
+static void FindAnyAndTypeVariable(const FunctionSignature &signature, const TypeName &type, bool &uses_any,
+                                   bool &uses_type_variable) {
+	if (!type.HasArguments()) {
+		auto variable = signature.FindVariable(type.GetName());
+		uses_any = uses_any || type.IsBuiltinType(LogicalTypeId::ANY);
+		uses_type_variable = uses_type_variable || (variable && !variable->IsValue());
+		return;
+	}
+	for (auto &argument : type.GetArguments()) {
+		if (argument.IsType()) {
+			FindAnyAndTypeVariable(signature, argument.GetType(), uses_any, uses_type_variable);
+		}
+	}
+}
+
 bool FunctionSignature::HasCompleteReturnType() const {
 	return return_type.IsType() && !UsesVariable(*this, return_type.GetTypeName());
 }
@@ -558,36 +574,6 @@ hash_t FunctionSignature::Hash() const {
 	return hash;
 }
 
-void FunctionSignature::FillNamedDefaults(ClientContext &context, const vector<LogicalType> &parameter_types,
-                                          named_argument_map_t &named_parameters) const {
-	D_ASSERT(parameter_types.size() == parameters.size());
-	// keyword-only parameters are slots, bound in the order they are declared - the arguments "**kwargs" receives
-	// follow them in the order they were passed
-	named_argument_map_t result;
-	for (idx_t i = 0; i < parameters.size(); i++) {
-		auto &param = parameters[i];
-		if (param.GetKind() != FunctionParameterKind::KEYWORD_ONLY) {
-			continue;
-		}
-		auto entry = named_parameters.find(param.GetName());
-		if (entry != named_parameters.end()) {
-			result.insert(param.GetName(), std::move(entry->second));
-		} else if (param.HasDefaultValue()) {
-			result.insert(param.GetName(),
-			              FunctionBinder::CastToParameterType(context, *param.GetDefaultValue(), parameter_types[i]));
-		}
-	}
-	if (result.empty()) {
-		return;
-	}
-	for (auto &entry : named_parameters) {
-		if (!result.contains(entry.first)) {
-			result.insert(entry.first, std::move(entry.second));
-		}
-	}
-	named_parameters = std::move(result);
-}
-
 void FunctionSignature::Verify() const {
 	// Check for duplicate parameter names
 	identifier_set_t seen_names;
@@ -596,6 +582,18 @@ void FunctionSignature::Verify() const {
 			throw InvalidInputException("Duplicate parameter name: %s", param.GetName());
 		}
 		seen_names.insert(param.GetName());
+	}
+
+	// ANY is the type of the argument itself, which a type variable that the other arguments determine is not
+	for (const auto &param : parameters) {
+		bool uses_any = false;
+		bool uses_type_variable = false;
+		FindAnyAndTypeVariable(*this, param.GetTypeName(), uses_any, uses_type_variable);
+		if (uses_any && uses_type_variable) {
+			throw InvalidInputException("Parameter '%s' uses ANY and a type variable in the same type - declare a "
+			                            "type variable instead of ANY",
+			                            param.ToString());
+		}
 	}
 
 	// Also check for default values that are not at the end of the positional parameters
@@ -742,42 +740,6 @@ idx_t BoundSimpleFunction::GetKwargsCount(const FunctionSignature &signature) co
 		}
 	}
 	return result;
-}
-
-void BoundSimpleFunction::SetCallArguments(const FunctionSignature &signature,
-                                           const vector<LogicalType> &parameter_types, const vector<Value> &parameters,
-                                           const named_argument_map_t &named_parameters) {
-	D_ASSERT(parameter_types.size() == signature.GetParameterCount());
-	const auto positional_count = signature.GetPositionalParameterCount();
-	arguments.clear();
-	for (idx_t i = 0; i < positional_count; i++) {
-		arguments.push_back(parameter_types[i]);
-	}
-	auto args_index = signature.GetArgsIndex();
-	for (idx_t i = positional_count; i < parameters.size(); i++) {
-		auto is_typed = args_index.IsValid() && parameter_types[args_index.GetIndex()].id() != LogicalTypeId::ANY;
-		arguments.push_back(is_typed ? parameter_types[args_index.GetIndex()] : parameters[i].type());
-	}
-	const auto positional_argument_count = arguments.size();
-
-	// only the options the signature receives by name, in the order they were passed
-	vector<Identifier> names;
-	for (auto &entry : named_parameters) {
-		auto param_idx = signature.GetParameterIndexByName(entry.first);
-		if (!param_idx.IsValid()) {
-			if (signature.GetKwargs()) {
-				names.push_back(entry.first);
-				arguments.push_back(entry.second.type());
-			}
-			continue;
-		}
-		auto &param = signature.GetParameter(param_idx.GetIndex());
-		if (!param.AcceptsPosition()) {
-			names.push_back(entry.first);
-			arguments.push_back(parameter_types[param_idx.GetIndex()]);
-		}
-	}
-	SetNamedArguments(positional_argument_count, std::move(names));
 }
 
 FunctionParameterKind BoundSimpleFunction::GetArgumentParameterKind(const FunctionSignature &signature,

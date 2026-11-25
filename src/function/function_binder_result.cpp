@@ -1,5 +1,6 @@
 #include "duckdb/function/function_binder.hpp"
 
+#include "duckdb/common/enum_util.hpp"
 #include "duckdb/common/exception/binder_exception.hpp"
 #include "duckdb/function/type_constructor.hpp"
 
@@ -46,8 +47,17 @@ string FunctionMismatch::IncompatibleArgument::ToString(const SimpleFunction &fu
                                                         const FunctionBindError &error) const {
 	auto &name = error.GetCall().GetArgument(argument).name;
 	auto &argument_type = error.GetCall().GetArgument(argument).type;
-	auto parameter_name = reads_as_declared ? function.GetSignature().GetParameter(parameter).GetTypeName().ToString()
-	                                        : parameter_type.ToString();
+	string parameter_name;
+	if (reads_as_declared) {
+		auto &signature = function.GetSignature();
+		auto &type_name = signature.GetParameter(parameter).GetTypeName();
+		auto constraint =
+		    type_name.HasArguments() ? LogicalTypeId::INVALID : signature.GetConstraint(type_name.GetName());
+		// a constrained type variable reads as the kind of type it stands for
+		parameter_name = constraint == LogicalTypeId::INVALID ? type_name.ToString() : EnumUtil::ToString(constraint);
+	} else {
+		parameter_name = parameter_type.ToString();
+	}
 	if (name.empty()) {
 		return StringUtil::Format("Argument %llu of type %s cannot be implicitly cast to %s", argument + 1,
 		                          argument_type.ToString(), parameter_name);
@@ -62,10 +72,6 @@ string FunctionMismatch::TemplateDeduction::ToString(const SimpleFunction &funct
 		                          inferred_values[0].ToString(), inferred_values[1].ToString());
 	}
 	auto &steps = inferred_types;
-	if (constraint != LogicalTypeId::INVALID) {
-		return StringUtil::Format("An argument of type %s cannot be passed as %s", steps.back().ToString(),
-		                          LogicalType(constraint).ToString());
-	}
 	// the inferred types are the first one, then pairs of a type and what the template is promoted to with it
 	auto msg = StringUtil::Format("Cannot deduce template type '%s', it was inferred to be:\n", template_name);
 	msg += StringUtil::Format("  - '%s', from first occurrence\n", steps[0].ToString());

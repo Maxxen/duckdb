@@ -181,29 +181,30 @@ public:
 			if (parameter_count <= arguments.size() || !signature.GetReturnType().IsType()) {
 				continue;
 			}
-			if (result && result->parameter_types.size() <= parameter_count) {
+			if (result && result->GetFunction().GetSignature().GetParameterCount() <= parameter_count) {
 				continue;
 			}
 			vector<LogicalType> call_types = arguments;
 			call_types.resize(parameter_count, LogicalType::UNKNOWN);
 			auto match =
 			    FunctionBinder::MatchOverload(cache, offset, functions.GetSharedOverload(offset), {call_types}, false);
-			auto binding = std::get_if<FunctionBinding>(&match);
-			if (!binding || FunctionBinder::BindReturnType(cache, *binding).id() != return_type.id()) {
+			if (!match || FunctionBinder::BindReturnType(cache, *match).id() != return_type.id()) {
 				continue;
 			}
 			// the plan recorded the types the function was bound to, so they are not cast
-			bool leading = true;
+			auto &bound_arguments = match->layout.arguments;
+			bool leading = bound_arguments.size() == parameter_count;
 			for (idx_t i = 0; i < arguments.size() && leading; i++) {
-				leading = binding->parameter_types[i].id() == arguments[i].id();
+				leading = bound_arguments[i].type.id() == arguments[i].id();
 			}
 			if (leading) {
-				result = std::move(*binding);
+				result = std::move(*match);
 			}
 		}
 		if (result) {
-			for (idx_t i = arguments.size(); i < result->parameter_types.size(); i++) {
-				arguments.push_back(result->parameter_types[i]);
+			auto &bound_arguments = result->layout.arguments;
+			for (idx_t i = arguments.size(); i < bound_arguments.size(); i++) {
+				arguments.push_back(bound_arguments[i].type);
 			}
 		}
 		return result;
@@ -293,9 +294,7 @@ public:
 
 		// by index: a selection without named arguments binds to a relaxed copy of the overload
 		auto &binding = func_idx.GetBinding();
-		BoundTableFunction function(functions.GetFunctionByOffset(binding.GetOverloadIndex()), std::move(arguments),
-		                            binding.parameter_types);
-		function.SetNamedArguments(positional_count, std::move(named_arguments));
+		BoundTableFunction function(functions.GetFunctionByOffset(binding.GetOverloadIndex()), binding.layout);
 		return make_pair(std::move(function), has_serialize);
 	}
 

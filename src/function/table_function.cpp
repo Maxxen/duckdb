@@ -1,4 +1,5 @@
 #include "duckdb/function/table_function.hpp"
+#include "duckdb/function/function_binder.hpp"
 #include "duckdb/function/partition_stats.hpp"
 #include "duckdb/common/string_util.hpp"
 
@@ -74,12 +75,11 @@ BoundTableFunction::BoundTableFunction() : BaseTableFunction(nullptr, nullptr, n
 }
 
 BoundTableFunction::BoundTableFunction(const TableFunction &function)
-    : BoundTableFunction(make_shared_ptr<const TableFunction>(function), vector<LogicalType>(), vector<LogicalType>()) {
+    : BoundTableFunction(make_shared_ptr<const TableFunction>(function), ArgumentLayout()) {
 }
 
-BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_p, vector<LogicalType> arguments_p,
-                                       vector<LogicalType> parameter_types_p)
-    : BaseTableFunction(nullptr, nullptr, nullptr, nullptr), parameter_types(std::move(parameter_types_p)) {
+BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_p, const ArgumentLayout &layout)
+    : BaseTableFunction(nullptr, nullptr, nullptr, nullptr) {
 	definition = std::move(function_p);
 	auto &function = *definition;
 	qualified_name = function.GetQualifiedName();
@@ -133,17 +133,41 @@ BoundTableFunction::BoundTableFunction(shared_ptr<const TableFunction> function_
 	global_initialization = function.global_initialization;
 	parallelism = function.parallelism;
 
-	arguments = std::move(arguments_p);
-	positional_arguments = arguments.size();
+	arguments = layout.GetArgumentTypes();
+	SetNamedArguments(layout.positional_count, layout.named_arguments);
 }
 
 void BoundTableFunction::FillNamedDefaults(ClientContext &context, named_argument_map_t &named_parameters) const {
-	GetSignature().FillNamedDefaults(context, parameter_types, named_parameters);
-}
-
-void BoundTableFunction::SetCallArguments(const vector<Value> &parameters,
-                                          const named_argument_map_t &named_parameters) {
-	BoundSimpleFunction::SetCallArguments(GetSignature(), parameter_types, parameters, named_parameters);
+	// keyword-only parameters are slots, bound in the order they are declared - the arguments "**kwargs" receives
+	// follow them in the order they were passed
+	named_argument_map_t result;
+	idx_t argument_idx = positional_arguments;
+	for (auto &param : GetSignature().GetParameters()) {
+		if (param.GetKind() != FunctionParameterKind::KEYWORD_ONLY) {
+			continue;
+		}
+		// the function is bound with an argument for every keyword-only parameter, they follow the positional ones
+		if (argument_idx >= arguments.size()) {
+			throw InternalException("Table function %s is not bound with its keyword-only parameter %s", GetName(),
+			                        param.GetName());
+		}
+		auto &type = arguments[argument_idx++];
+		auto entry = named_parameters.find(param.GetName());
+		if (entry != named_parameters.end()) {
+			result.insert(param.GetName(), std::move(entry->second));
+		} else if (param.HasDefaultValue()) {
+			result.insert(param.GetName(), FunctionBinder::CastToParameterType(context, *param.GetDefaultValue(), type));
+		}
+	}
+	if (result.empty()) {
+		return;
+	}
+	for (auto &entry : named_parameters) {
+		if (!result.contains(entry.first)) {
+			result.insert(entry.first, std::move(entry.second));
+		}
+	}
+	named_parameters = std::move(result);
 }
 
 bool BoundTableFunction::operator==(const BoundTableFunction &rhs) const {

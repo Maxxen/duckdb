@@ -148,73 +148,6 @@ LogicalType BindTypeV2(CV2Factory &factory, const QualifiedName &name, const vec
 	return result;
 }
 
-// The value-parameter view of a bound type: the exact dual of
-// logical_type_create. Kinds without retained parameters report 0.
-idx_t TypeParamCount(const LogicalType &type) {
-	switch (type.id()) {
-	case LogicalTypeId::DECIMAL:
-	case LogicalTypeId::ARRAY:
-	case LogicalTypeId::MAP:
-		return 2;
-	case LogicalTypeId::LIST:
-		return 1;
-	case LogicalTypeId::STRUCT:
-	case LogicalTypeId::TUPLE:
-		return StructType::GetChildCount(type);
-	case LogicalTypeId::UNION:
-		return UnionType::GetMemberCount(type);
-	case LogicalTypeId::ENUM:
-		return EnumType::GetSize(type);
-	case LogicalTypeId::VARCHAR:
-		return StringType::GetCollation(type).empty() ? 0 : 1;
-	case LogicalTypeId::GEOMETRY:
-	case LogicalTypeId::GEOGRAPHY:
-		return GeoType::HasCRS(type) ? 1 : 0;
-	default:
-		return 0;
-	}
-}
-
-// Produces param `index` of `type`: the owned value is returned, the
-// borrowed name (off the type, or a static literal) goes into out_name,
-// which arrives pre-set to the positional empty name. The caller has
-// bounds-checked index against TypeParamCount.
-Value TypeParamValue(const LogicalType &type, idx_t index, std::string_view &out_name) {
-	switch (type.id()) {
-	case LogicalTypeId::DECIMAL:
-		return index == 0 ? Value::UINTEGER(DecimalType::GetWidth(type)) : Value::UINTEGER(DecimalType::GetScale(type));
-	case LogicalTypeId::LIST:
-		return Value::TYPE(ListType::GetChildType(type));
-	case LogicalTypeId::ARRAY:
-		return index == 0 ? Value::TYPE(ArrayType::GetChildType(type))
-		                  : Value::BIGINT(NumericCast<int64_t>(ArrayType::GetSize(type)));
-	case LogicalTypeId::MAP:
-		return Value::TYPE(index == 0 ? MapType::KeyType(type) : MapType::ValueType(type));
-	case LogicalTypeId::STRUCT:
-	case LogicalTypeId::TUPLE:
-		if (!StructType::IsUnnamed(type)) {
-			auto &child_name = StructType::GetChildName(type, index);
-			out_name = std::string_view(child_name.c_str(), child_name.size());
-		}
-		return Value::TYPE(StructType::GetChildType(type, index));
-	case LogicalTypeId::UNION: {
-		auto &member_name = UnionType::GetMemberName(type, index);
-		out_name = std::string_view(member_name.c_str(), member_name.size());
-		return Value::TYPE(UnionType::GetMemberType(type, index));
-	}
-	case LogicalTypeId::ENUM:
-		return Value(EnumType::GetString(type, index).GetString());
-	case LogicalTypeId::VARCHAR:
-		out_name = "collation";
-		return Value(StringType::GetCollation(type));
-	case LogicalTypeId::GEOMETRY:
-	case LogicalTypeId::GEOGRAPHY:
-		return Value(GeoType::GetCRS(type).GetDefinition());
-	default:
-		throw InternalException("TypeParamValue called for a kind without parameters");
-	}
-}
-
 } // anonymous namespace
 
 auto ResolveCommonType(CV2Factory &factory, const vector<LogicalType> &types) -> LogicalType {
@@ -444,7 +377,7 @@ DUCKDB_V2_ERROR duckdb_v2_logical_type_get_param_count(duckdb_v2_logical_type_ha
 	DUCKDB_CHECK_ARG(out_count);
 	return WithErrorHandler(err, [&]() {
 		auto lt = Convert(type);
-		*out_count = TypeParamCount(*lt);
+		*out_count = lt->GetParameterCount();
 	});
 }
 
@@ -461,12 +394,15 @@ DUCKDB_V2_ERROR duckdb_v2_logical_type_get_param(duckdb_v2_logical_type_handle t
 		*out_value = nullptr;
 		auto lt_ref = Convert(type);
 		auto &lt = *lt_ref;
-		if (index >= TypeParamCount(lt)) {
+		if (index >= lt.GetParameterCount()) {
 			throw duckdb::InvalidInputException("parameter index out of range in duckdb_v2_logical_type_get_param");
 		}
-		std::string_view name;
-		auto *value = new duckdb::Value(TypeParamValue(lt, index, name));
-		SetStringOut(out_name, out_name_length, name);
+		// the name is borrowed off the type, or static: it outlives the handle
+		auto &name = lt.GetParameterName(index);
+		auto *value = new duckdb::Value(lt.GetParameter(index));
+		if (!name.empty()) {
+			SetStringOut(out_name, out_name_length, std::string_view(name.c_str(), name.size()));
+		}
 		*out_value = Convert(value);
 	});
 }

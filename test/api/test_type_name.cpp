@@ -76,9 +76,25 @@ TEST_CASE("Every type a registered function declares binds", "[api][type_name]")
 
 	vector<string> failures;
 	idx_t parameter_count = 0;
+	// a name that uses a variable of the signature is not a type until a call determines the variable
+	std::function<bool(const FunctionSignature &, const TypeName &)> uses_variable;
+	uses_variable = [&](const FunctionSignature &signature, const TypeName &name) {
+		if (!name.HasArguments()) {
+			return signature.FindVariable(name.GetName()) != nullptr;
+		}
+		for (auto &argument : name.GetArguments()) {
+			if (argument.IsType() && uses_variable(signature, argument.GetType())) {
+				return true;
+			}
+		}
+		return false;
+	};
 	auto check_type = [&](const SimpleFunction &function, const TypeName &name) {
+		if (uses_variable(function.GetSignature(), name)) {
+			return;
+		}
 		try {
-			FunctionBinder::BindTypePattern(&context, name, function.GetSignature());
+			FunctionBinder::BindTypeName(&context, name);
 		} catch (std::exception &ex) {
 			failures.push_back(function.ToString() + ": " + name.ToString() + ": " + ErrorData(ex).RawMessage());
 		}
