@@ -210,37 +210,19 @@ static void StructSearchOp(const Vector &input_vector, const vector<Vector> &mem
 
 template <class RETURN_TYPE, bool FIND_NULLS = false>
 static void StructSearchFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	if (result.GetType().id() == LogicalTypeId::SQLNULL) {
-		ConstantVector::SetNull(result, count_t(args.size()));
-		return;
-	}
-
 	const auto count = args.size();
 	const auto &input_vector = args.data[0];
+	if (input_vector.GetType().id() == LogicalTypeId::SQLNULL) {
+		// a NULL struct is searched as NULL
+		ConstantVector::SetNull(result, count_t(count));
+		return;
+	}
 	const auto &members = StructVector::GetEntries(input_vector);
 	const auto &target = args.data[1];
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
 	auto &info = func_expr.BindInfo()->Cast<StructSearchBindData>();
 
 	StructSearchOp<RETURN_TYPE, FIND_NULLS>(input_vector, members, info.matching_members, target, count, result);
-}
-
-//! A search of an unnamed struct - a NULL struct is searched as NULL
-template <LogicalTypeId RETURN_TYPE>
-static LogicalType StructContainsReturnType(const ResolveReturnTypeInput &input) {
-	D_ASSERT(input.GetArgumentCount() == 2);
-	auto &child_type = input.GetArgumentType(0);
-	if (child_type.id() == LogicalTypeId::UNKNOWN) {
-		throw ParameterNotResolvedException();
-	}
-	if (child_type.id() == LogicalTypeId::SQLNULL) {
-		return LogicalType::SQLNULL;
-	}
-	// an empty struct contains nothing, the search always returns false (or position 0)
-	if (!StructType::GetChildTypes(child_type).empty() && child_type.id() != LogicalTypeId::TUPLE) {
-		throw BinderException("%s can only be used on unnamed structs", input.GetFunctionName());
-	}
-	return LogicalType(RETURN_TYPE);
 }
 
 //! Casts the members of the struct that can be compared with the value, and the value, to the type they unify into
@@ -279,7 +261,12 @@ static void CastStructContainsArguments(BindScalarFunctionInput &input) {
 static unique_ptr<FunctionData> StructContainsBind(BindScalarFunctionInput &input) {
 	auto &arguments = input.GetArguments();
 	vector<idx_t> matching_members;
-	if (arguments[0]->GetReturnType().id() != LogicalTypeId::SQLNULL) {
+	auto &struct_type = arguments[0]->GetReturnType();
+	if (struct_type.id() != LogicalTypeId::SQLNULL) {
+		// an empty struct contains nothing, the search always returns false (or no position)
+		if (!StructType::GetChildTypes(struct_type).empty() && struct_type.id() != LogicalTypeId::TUPLE) {
+			throw BinderException("%s can only be used on unnamed structs", input.GetBoundFunction().GetName());
+		}
 		CastStructContainsArguments(input);
 		// the members that can match the value are of the type of the value
 		auto &target_type = arguments[1]->GetReturnType();
@@ -300,7 +287,7 @@ ScalarFunction StructContainsFun::GetFunction() {
 	                       .AddVariable("U")
 	                       .AddParameter("struct", TypeName::VARIABLE("T"))
 	                       .AddParameter("entry", TypeName::VARIABLE("U"))
-	                       .SetReturnType(ReturnType::ANY(StructContainsReturnType<LogicalTypeId::BOOLEAN>)),
+	                       .SetReturnType(LogicalType::BOOLEAN),
 	                   StructSearchFunction<bool>);
 	fun.SetBindCallback(StructContainsBind);
 	return fun;
@@ -313,7 +300,7 @@ ScalarFunction StructPositionFun::GetFunction() {
 	                       .AddVariable("U")
 	                       .AddParameter("struct", TypeName::VARIABLE("T"))
 	                       .AddParameter("entry", TypeName::VARIABLE("U"))
-	                       .SetReturnType(ReturnType::ANY(StructContainsReturnType<LogicalTypeId::INTEGER>)),
+	                       .SetReturnType(LogicalType::INTEGER),
 	                   StructSearchFunction<int32_t, true>);
 	fun.SetBindCallback(StructContainsBind);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

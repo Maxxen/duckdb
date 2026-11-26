@@ -492,6 +492,24 @@ LogicalType DecimalArithmeticReturnType(const ResolveReturnTypeInput &input) {
 	return DecimalArithmeticResultType<IS_MODULO>(input.GetDecimalWidthLimit(), argument_types, check_overflow);
 }
 
+//! Cast an operand to the decimal the kernel computes on. An integer of at most 64 bits always fits the decimal it is
+//! passed as, so it is cast from the integer itself instead of from that decimal
+void CastDecimalOperand(BindScalarFunctionInput &input, idx_t operand, const LogicalType &target_type) {
+	auto &argument = input.GetArguments()[operand];
+	if (BoundCastExpression::IsCast(*argument)) {
+		auto &cast = argument->Cast<BoundFunctionExpression>();
+		auto source_type = BoundCastExpression::SourceType(cast);
+		uint32_t width, scale;
+		if (source_type.IsIntegral() && GetTypeIdSize(source_type.InternalType()) <= sizeof(int64_t) &&
+		    !BoundCastExpression::IsTryCast(cast) && source_type.GetDecimalProperties(width, scale) &&
+		    argument->GetReturnType() == LogicalType::DECIMAL(width, scale)) {
+			auto source = std::move(BoundCastExpression::ChildMutable(cast));
+			argument = std::move(source);
+		}
+	}
+	input.CastArgument(operand, target_type);
+}
+
 //! The operands are not cast to a common decimal when they are matched: the kernel computes on two values of the
 //! result type, so an operand of another scale or physical type is cast to it
 void CastDecimalOperands(BindScalarFunctionInput &input) {
@@ -510,20 +528,7 @@ void CastDecimalOperands(BindScalarFunctionInput &input) {
 		    argument_type.InternalType() == result_type.InternalType()) {
 			continue;
 		}
-		auto &argument = input.GetArguments()[i];
-		if (BoundCastExpression::IsCast(*argument)) {
-			auto &cast = argument->Cast<BoundFunctionExpression>();
-			auto source_type = BoundCastExpression::SourceType(cast);
-			uint32_t width, scale;
-			// an integer of at most 64 bits always fits the decimal it is passed as: cast it to the result type itself
-			if (source_type.IsIntegral() && GetTypeIdSize(source_type.InternalType()) <= sizeof(int64_t) &&
-			    !BoundCastExpression::IsTryCast(cast) && source_type.GetDecimalProperties(width, scale) &&
-			    argument_type == LogicalType::DECIMAL(width, scale)) {
-				auto source = std::move(BoundCastExpression::ChildMutable(cast));
-				argument = std::move(source);
-			}
-		}
-		input.CastArgument(i, result_type);
+		CastDecimalOperand(input, i, result_type);
 	}
 }
 
@@ -1372,8 +1377,8 @@ unique_ptr<FunctionData> BindDecimalMultiply(BindScalarFunctionInput &input) {
 		    argument_type.InternalType() == result_type.InternalType()) {
 			continue;
 		}
-		input.CastArgument(
-		    i, LogicalType::DECIMAL(DecimalType::GetWidth(result_type), DecimalType::GetScale(argument_type)));
+		CastDecimalOperand(
+		    input, i, LogicalType::DECIMAL(DecimalType::GetWidth(result_type), DecimalType::GetScale(argument_type)));
 	}
 	// now select the physical function to execute
 	if (bind_data->check_overflow) {

@@ -218,7 +218,7 @@ SELECT contains([], NULL), list_contains([]::VARCHAR[], NULL), list_contains([1]
 ----
 false	false	NULL	NULL
 
-# an untyped NULL is searched as a list
+# an untyped NULL says nothing about what is searched: the result is a BOOLEAN NULL
 query IIII
 SELECT 1 IN NULL, contains(NULL, 1), 1.5 IN NULL, [1] IN NULL
 ----

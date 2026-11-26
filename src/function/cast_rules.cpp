@@ -6,8 +6,8 @@
 namespace duckdb {
 
 //! The target type determines the preferred implicit casts
-static int64_t TargetTypeCost(const LogicalType &type) {
-	switch (type.id()) {
+static int64_t TargetTypeCost(LogicalTypeId type) {
+	switch (type) {
 	case LogicalTypeId::BIGINT:
 		return 101;
 	case LogicalTypeId::INTEGER:
@@ -52,6 +52,14 @@ static int64_t TargetTypeCost(const LogicalType &type) {
 	default:
 		return 110;
 	}
+}
+
+static int64_t TargetTypeCost(const LogicalType &type) {
+	return TargetTypeCost(type.id());
+}
+
+int64_t CastRules::ImplicitCastNull(LogicalTypeId to) {
+	return TargetTypeCost(to);
 }
 
 static int64_t ImplicitCastTinyint(const LogicalType &to) {

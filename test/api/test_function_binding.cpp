@@ -643,7 +643,6 @@ TEST_CASE("Overloads that match at the same cost are selected by how specific th
 		    {"DECIMAL(W, 0) over DECIMAL(W, S), NULL", {{decimal_w0}, {decimal_ws}}, {null}, 0},
 		    {"T[3] over T[N], FLOAT[3]", {{t_3}, {t_n}}, {floats_3}, 0},
 		    // a type says more than a type variable of its kind
-		    {"STRUCT(a INTEGER) over T IS STRUCT, NULL", {{struct_a}, {t_struct}}, {null}, 0},
 		    {"STRUCT(a INTEGER) over T IS STRUCT, the struct", {{struct_a}, {t_struct}}, {a_struct}, 0},
 		    {"DECIMAL(18, 3) over T IS DECIMAL, DECIMAL(18, 3)", {{decimal_18_3}, {t_decimal}}, {decimal}, 0},
 		    {"DECIMAL(18, 3) over T IS DECIMAL, NULL", {{decimal_18_3}, {t_decimal}}, {null}, 0},
@@ -691,9 +690,11 @@ TEST_CASE("Overloads that match at the same cost are selected by how specific th
 		    {"FLOAT[N], not FLOAT[3], FLOAT[4]", {{float_3}, {float_n}}, {floats_4}, 1},
 		    {"DECIMAL(W, S), not DECIMAL(W, 0), DECIMAL(18, 3)", {{decimal_w0}, {decimal_ws}}, {decimal}, 1},
 		    {"T[N], not T[3], FLOAT[4]", {{t_3}, {t_n}}, {floats_4}, 1},
-		    // no tie: the cost decides, a type variable of any type costs more than any cast - but less for a NULL
+		    // no tie: the cost decides, a type variable of any type costs more than any cast. A NULL that is all a
+		    // type variable is passed costs what a NULL costs as itself, whatever the constraint of the variable
 		    {"INTEGER at a lower cost than T, an integer", {{LogicalType::INTEGER}, {t}}, {integer}, 0},
-		    {"T at a lower cost than INTEGER, NULL", {{LogicalType::INTEGER}, {t}}, {null}, 1},
+		    {"INTEGER at a lower cost than T, NULL", {{LogicalType::INTEGER}, {t}}, {null}, 0},
+		    {"T IS STRUCT at a lower cost than STRUCT(a INTEGER), NULL", {{struct_a}, {t_struct}}, {null}, 1},
 		    {"T IS STRUCT at a lower cost than T, a struct", {{t_struct}, {t}}, {a_struct}, 0},
 		    {"T IS DECIMAL at a lower cost than T, a decimal", {{t_decimal}, {t}}, {decimal}, 0},
 		    {"T IS DECIMAL does not take an integer, T does", {{t_decimal}, {t}}, {integer}, 1},
@@ -788,10 +789,22 @@ TEST_CASE("A call matches an overload at the rank the rules count", "[api][funct
 		     {integer},
 		     MakeRank(0, 0, 0, 0, 0)},
 		    {"rule 2: T, an integer", GetSelectionSignature({t}), {integer}, MakeRank(1, 0, 1, 0, 0)},
-		    {"rule 2 and 3: T, a NULL is not counted and costs 5",
+		    {"rule 2 and 3: T, a NULL is not counted and costs 110 as itself",
 		     GetSelectionSignature({t}),
 		     {null},
-		     MakeRank(0, 5, 1, 0, 0)},
+		     MakeRank(0, 110, 1, 0, 0)},
+		    {"rule 3: T and T, a NULL costs the cast to the type the integer says",
+		     GetSelectionSignature({t, t}),
+		     {integer, null},
+		     MakeRank(1, 102, 2, 0, 0)},
+		    {"rule 3: T[], a NULL costs the cast to a list of NULL",
+		     GetSelectionSignature({t_list}),
+		     {null},
+		     MakeRank(0, 160, 1, 2, 0)},
+		    {"rule 3: FLOAT[N], a NULL is passed as it is and costs the cast to the type the parameter names",
+		     GetSelectionSignature({float_n}),
+		     {null},
+		     MakeRank(0, 161, 0, 0, 1)},
 		    {"rule 3: T[] and T, a string literal costs 20",
 		     GetSelectionSignature({t_list, t}),
 		     {string_literal, integer},
@@ -876,6 +889,8 @@ TEST_CASE("The rules of the rank decide between overloads in their order", "[api
 	const auto struct_a = TypeName::STRUCT({{"a", LogicalType::INTEGER}});
 	const auto map_varchar_t = TypeName::MAP(LogicalType::VARCHAR, t);
 	const auto map_u_t = TypeName::MAP(u, t);
+	const TypeName geometry_c(Identifier("GEOMETRY"), {TypeName::VARIABLE("C")});
+	const TypeName geography_c(Identifier("GEOGRAPHY"), {TypeName::VARIABLE("C")});
 
 	con.context->RunFunctionInTransaction([&]() {
 		const LogicalType integer = LogicalType::INTEGER;
@@ -894,7 +909,11 @@ TEST_CASE("The rules of the rank decide between overloads in their order", "[api
 		     {integer},
 		     0},
 		    {"rule 3: BIGINT over DOUBLE, an integer", {{LogicalType::BIGINT}, {LogicalType::DOUBLE}}, {integer}, 0},
-		    {"rule 3: T over INTEGER, NULL", {{LogicalType::INTEGER}, {t}}, {null}, 1},
+		    {"rule 3: INTEGER over T, NULL", {{LogicalType::INTEGER}, {t}}, {null}, 0},
+		    {"rule 3: GEOMETRY(C) over GEOGRAPHY(C), NULL is passed as it is",
+		     {{geography_c}, {geometry_c}},
+		     {null},
+		     1},
 		    {"rule 3 before rule 4: T IS DECIMAL without a cast over DOUBLE with one, a decimal",
 		     {{t_decimal}, {LogicalType::DOUBLE}},
 		     {decimal},
@@ -904,10 +923,10 @@ TEST_CASE("The rules of the rank decide between overloads in their order", "[api
 		    {"rule 5: T[] over T, a list", {{t_list}, {t}}, {integers}, 0},
 		    {"rule 5: ANY[] over ANY, a list", {{any_list}, {any}}, {integers}, 0},
 		    {"rule 5: MAP(VARCHAR, T) over MAP(U, T), a map", {{map_varchar_t}, {map_u_t}}, {a_map}, 0},
-		    {"rule 5: (T[], T) over (T IS STRUCT, U), NULL and an integer",
+		    {"rule 3: (T IS STRUCT, U) over (T[], T), NULL and an integer: a NULL costs less as itself than a list",
 		     {{t_list, t}, {t_struct, u}},
 		     {null, integer},
-		     0},
+		     1},
 		    {"rule 5 before rule 6: (T[], FLOAT[N]) over (T, FLOAT[3])",
 		     {{t_list, float_n}, {t, float_3}},
 		     {integers, floats_3},

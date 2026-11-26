@@ -40,13 +40,13 @@ static optional<LogicalType> CoerceToKind(const LogicalType &type, LogicalTypeId
 	return nullopt;
 }
 
-static int64_t ImplicitCastCost(optional_ptr<ClientContext> context, const LogicalType &source,
-                                const LogicalType &target) {
-	if (context) {
-		return CastFunctionSet::ImplicitCastCost(*context, source, target);
-	}
+//! What an implicit cast costs - nothing if there is none
+static optional<int64_t> ImplicitCastCost(optional_ptr<ClientContext> context, const LogicalType &source,
+                                          const LogicalType &target) {
 	// without a context we can only consider the built-in cast rules - no registered casts are reachable
-	return CastRules::ImplicitCast(source, target);
+	auto cost =
+	    context ? CastFunctionSet::ImplicitCastCost(*context, source, target) : CastRules::ImplicitCast(source, target);
+	return cost < 0 ? optional<int64_t>() : optional<int64_t>(cost);
 }
 
 //! Why a call does not match an overload, as far as the overload itself is not needed to say it. The distance is how
@@ -166,8 +166,8 @@ static optional<LogicalType> PairType(const TypeName &name, LogicalTypeId kind, 
 //! the type of a parameter, "instance" is the type of the argument that is passed to it - invalid for a part of the
 //! name the argument has no type in the place of. A variable that "variables" does not say is what the one argument
 //! says it is, see GetVariableType: ANY, which is a type variable of its own for every argument, and every variable
-//! when it is the type an argument has by itself that is asked for. Without an argument ANY is a type. Returns
-//! nothing if a variable is not determined
+//! when it is the pattern of a parameter that is filled with the parts of an argument, see GetPassCost. Without an
+//! argument ANY is a type. Returns nothing if a variable is not determined
 static optional<LogicalType> BindTypeNameInternal(TypeCache &cache, const TypeName &name,
                                                   const FunctionSignature &signature,
                                                   const FunctionVariables &variables,
@@ -286,6 +286,13 @@ struct VariableBinding {
 //! What the arguments say the variables are, in the order of the arguments
 using VariableBindings = vector<VariableBinding>;
 
+//! How the arguments are passed: the type every argument the function is bound with is passed as, and how well the
+//! arguments of the call are passed (see FunctionRank)
+struct PassedArguments {
+	vector<LogicalType> types;
+	FunctionRank rank;
+};
+
 //! One attempt to match a call against an overload. It holds what is the same for the whole attempt: every pass over
 //! the arguments takes what the passes before it made, and returns what it makes
 class OverloadMatcher {
@@ -305,9 +312,8 @@ private:
 	Result<ArgumentLayout, MatchFailure> Layout() const;
 	Result<VariableBindings, MatchFailure> Collect(const ArgumentLayout &layout) const;
 	Result<FunctionVariables, MatchFailure> Infer(const ArgumentLayout &layout, const VariableBindings &bindings) const;
-	Result<vector<LogicalType>, MatchFailure> Substitute(const ArgumentLayout &layout,
-	                                                     const FunctionVariables &variables) const;
-	Result<FunctionRank, MatchFailure> Rank(const ArgumentLayout &layout, const vector<LogicalType> &types) const;
+	Result<PassedArguments, MatchFailure> Substitute(const ArgumentLayout &layout,
+	                                                 const FunctionVariables &variables) const;
 
 private:
 	void AddUntypedBindings(const TypeName &name, const LogicalType &type, idx_t argument,
@@ -316,7 +322,8 @@ private:
 	                     VariableBindings &bindings) const;
 	optional<LogicalType> BindType(const TypeName &name, const FunctionVariables &variables,
 	                               const LogicalType &instance) const;
-	LogicalType GetKind(const TypeName &name) const;
+	optional<int64_t> GetPassCost(const TypeName &name, const LogicalType &arg_type,
+	                              const optional<LogicalType> &type) const;
 
 private:
 	TypeCache &cache;
@@ -679,41 +686,6 @@ optional<LogicalType> OverloadMatcher::BindType(const TypeName &name, const Func
 	}
 }
 
-//! Substitute the variables: the type every argument is passed as is the type of its parameter with the variables as
-//! the arguments determine them. Returns why not: nothing determines the type an argument is passed as, or a
-//! variable of the return type
-Result<vector<LogicalType>, MatchFailure> OverloadMatcher::Substitute(const ArgumentLayout &layout,
-                                                                      const FunctionVariables &variables) const {
-	vector<LogicalType> types;
-	types.reserve(layout.arguments.size());
-	for (auto &argument : layout.arguments) {
-		auto &name = signature.GetParameter(argument.parameter_index).GetTypeName();
-		auto type = BindType(name, variables, argument.type);
-		if (!type && argument.type.id() == LogicalTypeId::SQLNULL) {
-			// a NULL is passed as it is where nothing determines the type of the parameter
-			type = argument.type;
-		}
-		if (!type) {
-			return Err(MatchFailure {1, FunctionMismatch::IncompatibleArgument {argument.argument_index.GetIndex(),
-			                                                                    argument.parameter_index, LogicalType(),
-			                                                                    true}});
-		}
-		types.push_back(std::move(*type));
-	}
-	auto &return_type = signature.GetReturnType();
-	for (auto &variable : signature.GetVariables()) {
-		auto &variable_name = variable.GetName().GetIdentifierName();
-		const bool is_determined = variables.types.count(variable_name) + variables.values.count(variable_name) > 0;
-		if (!is_determined && return_type.IsType() && return_type.GetTypeName().Contains(variable.GetName())) {
-			return Err(MatchFailure {0, FunctionMismatch::TemplateUnresolved {variable_name, variable.IsValue()}});
-		}
-	}
-	return std::move(types);
-}
-
-//===--------------------------------------------------------------------===//
-// Rank
-//===--------------------------------------------------------------------===//
 //! What an argument adds to the rank by the type of the parameter that receives it, see FunctionRank: whether it is
 //! passed through an unconstrained type variable (rule 2) or a type variable at all (rule 4), and what the type
 //! declares (rules 5 and 6)
@@ -746,96 +718,118 @@ static FunctionRank RankTypeName(const FunctionSignature &signature, const TypeN
 	return rank;
 }
 
-//! The kind of type a parameter declares, which is what a NULL is cast to: the type itself if it uses no variable,
-//! and any type for an unconstrained type variable by itself
-LogicalType OverloadMatcher::GetKind(const TypeName &name) const {
-	auto type = BindTypeNameInternal(cache, name, signature, FunctionVariables(), nullptr);
-	if (type) {
-		return *type;
+//! What passing an argument to a parameter costs: the implicit cast to the type it has to fit - nothing if it cannot
+//! be passed. "type" is the type it is passed as, if one could be made.
+//! - It has to fit the pattern of the parameter, which is the type of the parameter with every variable left open:
+//!   it casts implicitly to the pattern with its own parts in the place of the variables. INTEGER[3] fits T[] as
+//!   INTEGER[], INTEGER fits DECIMAL(W, S) as DECIMAL(10, 0), and anything fits a type variable by itself. For a type
+//!   that uses no variable the pattern is the type. The cast to the type it is passed as is then explicit: no
+//!   implicit cast to that type is asked for.
+//! - If it has no parts for the pattern, it has to cast implicitly to the type it is passed as: a VARIANT or a
+//!   string literal for T[]. There is no such argument for a variable by itself.
+//! - An unresolved parameter is passed as the type the parameter declares, at no cost.
+//! - A NULL costs the cast of a NULL to the type it is passed as. Where no such type could be made it is passed as
+//!   it is, and costs the cast of a NULL to the type the parameter names
+optional<int64_t> OverloadMatcher::GetPassCost(const TypeName &name, const LogicalType &arg_type,
+                                               const optional<LogicalType> &type) const {
+	auto context = cache.GetContext();
+	if (arg_type.id() == LogicalTypeId::SQLNULL && !type) {
+		return CastRules::ImplicitCastNull(DefaultTypeGenerator::GetDefaultType(name.GetName()));
 	}
-	if (name.HasArguments()) {
-		return LogicalType(DefaultTypeGenerator::GetDefaultType(name.GetName()));
+	if (!type) {
+		return nullopt;
 	}
-	auto constraint = signature.GetConstraint(name.GetName());
-	return constraint == LogicalTypeId::INVALID ? LogicalType::ANY : LogicalType(constraint);
+	if (arg_type.id() == LogicalTypeId::SQLNULL) {
+		return ImplicitCastCost(context, arg_type, *type);
+	}
+	if (arg_type.id() == LogicalTypeId::UNKNOWN) {
+		return 0;
+	}
+	// the pattern leaves every variable to the argument - without a variable every pattern is the type
+	static const FunctionVariables OPEN_VARIABLES;
+	auto fitted = signature.GetVariables().empty() ? type : BindType(name, OPEN_VARIABLES, arg_type);
+	auto cost = fitted ? ImplicitCastCost(context, arg_type, *fitted) : nullopt;
+	if (!cost && name.HasArguments()) {
+		cost = ImplicitCastCost(context, arg_type, *type);
+	}
+	return cost;
 }
 
-//! Rank how well the arguments are passed, see FunctionRank. An argument is passed as an instance of the type of its
-//! parameter if it casts implicitly to that type with the variables as the argument itself says they are - else,
-//! deferred, to a type with arguments if it casts implicitly to the type it is passed as, which "types" has. Returns
-//! the first argument that cannot be passed either way. A default is not ranked, and nothing is when the arguments
-//! are cast explicitly
-Result<FunctionRank, MatchFailure> OverloadMatcher::Rank(const ArgumentLayout &layout,
-                                                         const vector<LogicalType> &types) const {
-	if (explicit_casts) {
-		return FunctionRank();
-	}
-	auto context = cache.GetContext();
-	auto &arguments = layout.arguments;
-	// the variables of the type an argument has by itself: none but what it says they are
-	const FunctionVariables own_variables;
-	const bool has_variables = !signature.GetVariables().empty();
-	FunctionRank rank;
+//! Substitute the variables, and rank how the arguments are passed (see FunctionRank). The type every argument is
+//! passed as is the type of its parameter with the variables as the arguments determine them - a NULL is passed as it
+//! is where nothing determines that type. An argument of the call then adds what passing it costs, see GetPassCost,
+//! and what the type of its parameter declares to the rank. A default is not ranked, and nothing is when the
+//! arguments are cast explicitly: such an argument only needs a type. Returns why not: the first argument that
+//! cannot be passed and how many there are, else a variable of the return type that nothing determines
+Result<PassedArguments, MatchFailure> OverloadMatcher::Substitute(const ArgumentLayout &layout,
+                                                                  const FunctionVariables &variables) const {
+	PassedArguments result;
+	result.types.reserve(layout.arguments.size());
+	auto &rank = result.rank;
 	bool has_unknown_argument = false;
-	optional_idx mismatch;
+	optional<FunctionMismatch::IncompatibleArgument> mismatch;
 	idx_t mismatch_count = 0;
-	for (idx_t i = 0; i < arguments.size(); i++) {
-		auto &argument = arguments[i];
-		if (argument.IsDefaultArgument()) {
-			continue;
-		}
+	for (auto &argument : layout.arguments) {
 		auto &name = signature.GetParameter(argument.parameter_index).GetTypeName();
 		auto &arg_type = argument.type;
-		const auto source = argument.argument_index.GetIndex();
-		has_unknown_argument =
-		    has_unknown_argument || (arg_type.id() == LogicalTypeId::UNKNOWN && source < call.GetPositionalCount());
-		// a NULL or an unresolved parameter says nothing about the type: a NULL costs what it costs as the kind of
-		// type the parameter declares
-		int64_t cost = 0;
-		if (arg_type.id() == LogicalTypeId::SQLNULL) {
-			cost = ImplicitCastCost(context, arg_type, GetKind(name));
-		} else if (arg_type.id() != LogicalTypeId::UNKNOWN) {
-			// the type the argument has by itself: the one it is passed as, if there is no variable to determine
-			auto own_type = has_variables ? BindType(name, own_variables, arg_type) : types[i];
-			cost = own_type ? ImplicitCastCost(context, arg_type, *own_type) : -1;
+		const bool is_null = arg_type.id() == LogicalTypeId::SQLNULL;
+		auto type = BindType(name, variables, arg_type);
+		const bool is_ranked = !explicit_casts && !argument.IsDefaultArgument();
+		optional<int64_t> cost;
+		if (is_ranked) {
+			cost = GetPassCost(name, arg_type, type);
+		} else if (type || is_null) {
+			cost = 0;
 		}
-		if (cost < 0 && name.HasArguments()) {
-			// deferred
-			cost = ImplicitCastCost(context, arg_type, types[i]);
+		if (!cost && !mismatch) {
+			// the first argument that cannot be passed is reported
+			mismatch = FunctionMismatch::IncompatibleArgument {
+			    argument.argument_index.GetIndex(), argument.parameter_index, type ? *type : LogicalType(), true};
 		}
-		if (cost < 0) {
-			// the first argument that cannot be passed is reported: the more there are, the further the call is
-			if (!mismatch.IsValid()) {
-				mismatch = i;
-			}
+		result.types.push_back(type ? std::move(*type) : arg_type);
+		if (!cost) {
+			// the more arguments cannot be passed, the further the call is
 			mismatch_count++;
 			continue;
 		}
+		if (!is_ranked) {
+			continue;
+		}
+		has_unknown_argument = has_unknown_argument || (arg_type.id() == LogicalTypeId::UNKNOWN &&
+		                                                argument.argument_index.GetIndex() < call.GetPositionalCount());
 		auto declared = RankTypeName(signature, name);
-		rank.legacy_casts += cost >= OLD_IMPLICIT_CAST_COST ? 1 : 0;
+		rank.legacy_casts += *cost >= OLD_IMPLICIT_CAST_COST ? 1 : 0;
 		// a NULL is not passed through an unconstrained type variable: it says nothing about the type
-		rank.unconstrained_arguments += arg_type.id() == LogicalTypeId::SQLNULL ? 0 : declared.unconstrained_arguments;
-		rank.cast_cost += static_cast<idx_t>(cost);
+		rank.unconstrained_arguments += is_null ? 0 : declared.unconstrained_arguments;
+		rank.cast_cost += static_cast<idx_t>(*cost);
 		rank.variable_parameters += declared.variable_parameters;
 		rank.declared_structure += declared.variable_parameters * declared.declared_structure;
 		rank.declared_values += declared.declared_values;
 	}
-	if (mismatch.IsValid()) {
-		auto &argument = arguments[mismatch.GetIndex()];
-		return Err(MatchFailure {mismatch_count, FunctionMismatch::IncompatibleArgument {
-		                                             argument.argument_index.GetIndex(), argument.parameter_index,
-		                                             types[mismatch.GetIndex()], true}});
+	if (mismatch) {
+		return Err(MatchFailure {mismatch_count, std::move(*mismatch)});
 	}
-	// with a parameter of an unknown type every overload ranks the same
-	return has_unknown_argument ? FunctionRank() : rank;
+	auto &return_type = signature.GetReturnType();
+	for (auto &variable : signature.GetVariables()) {
+		auto &variable_name = variable.GetName().GetIdentifierName();
+		const bool is_determined = variables.types.count(variable_name) + variables.values.count(variable_name) > 0;
+		if (!is_determined && return_type.IsType() && return_type.GetTypeName().Contains(variable.GetName())) {
+			return Err(MatchFailure {0, FunctionMismatch::TemplateUnresolved {variable_name, variable.IsValue()}});
+		}
+	}
+	if (has_unknown_argument) {
+		// with a parameter of an unknown type every overload ranks the same
+		rank = FunctionRank();
+	}
+	return std::move(result);
 }
 
 //===--------------------------------------------------------------------===//
 // Match
 //===--------------------------------------------------------------------===//
 //! Match the call against the overload, in passes over the arguments: lay them out over the parameters, collect what
-//! they say the variables are, infer the variables, substitute them for the types the arguments are passed as, and
-//! rank how well they are passed (see FunctionRank). An unresolved parameter is passed as a type the overload
+//! they say the variables are, infer the variables, and substitute them for the types the arguments are passed as,
+//! which ranks how well they are passed (see FunctionRank). An unresolved parameter is passed as a type the overload
 //! declares or the other arguments determine - else the call is unresolved, see GetVariableType and Infer
 Result<FunctionBinding, MatchFailure> OverloadMatcher::Match() const {
 	auto layout = Layout();
@@ -850,21 +844,17 @@ Result<FunctionBinding, MatchFailure> OverloadMatcher::Match() const {
 	if (!variables) {
 		return Err(std::move(variables.GetError()));
 	}
-	auto types = Substitute(*layout, *variables);
-	if (!types) {
-		return Err(std::move(types.GetError()));
-	}
-	auto rank = Rank(*layout, *types);
-	if (!rank) {
-		return Err(std::move(rank.GetError()));
+	auto passed = Substitute(*layout, *variables);
+	if (!passed) {
+		return Err(std::move(passed.GetError()));
 	}
 	FunctionBinding binding;
-	binding.rank = *rank;
+	binding.rank = passed->rank;
 	binding.variables = std::move(*variables);
 	binding.layout = std::move(*layout);
-	for (idx_t i = 0; i < types->size(); i++) {
-		D_ASSERT(!TypeVisitor::Contains((*types)[i], LogicalTypeId::UNKNOWN));
-		binding.layout.arguments[i].type = std::move((*types)[i]);
+	for (idx_t i = 0; i < passed->types.size(); i++) {
+		D_ASSERT(!TypeVisitor::Contains(passed->types[i], LogicalTypeId::UNKNOWN));
+		binding.layout.arguments[i].type = std::move(passed->types[i]);
 	}
 	return std::move(binding);
 }

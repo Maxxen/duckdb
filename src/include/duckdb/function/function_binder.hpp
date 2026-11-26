@@ -117,19 +117,21 @@ struct ArgumentLayout {
 //!    determined if none says one. An overload is not a candidate if the arguments disagree about a variable, or
 //!    promote a constrained variable out of its kind (two enums are promoted to VARCHAR). A variable that is left
 //!    to an unresolved parameter - a type variable, ANY or a value variable that the parameter is passed as, and
-//!    that no other argument says - leaves the call unresolved (step 4). Every argument then has to be passable to
-//!    its parameter:
-//!    - As an instance of the type of the parameter: it casts implicitly to that type with the variables as the
-//!      argument itself says they are. INTEGER[3] is passed to T[] as INTEGER[], INTEGER to DECIMAL(W, S) as
-//!      DECIMAL(10, 0), and any argument to a type that uses no variable as that type.
-//!    - Else, deferred, to a type with arguments (T[], DECIMAL(W, S), FLOAT[N]): it casts implicitly to that type
-//!      with the variables as all the arguments determine them. A VARIANT and a string literal are passed to T[]
-//!      this way. Nothing is deferred to a type variable or a value variable by itself, and ANY is what the
-//!      argument itself has in its place.
-//!    - A NULL and an unresolved parameter are passed as the type of the parameter with the variables as the
-//!      arguments determine them - a NULL as it is, if a variable of that type is not determined.
+//!    that no other argument says - leaves the call unresolved (step 4). Every argument is then passed as the type
+//!    of its parameter with the variables as the arguments determine them, and has to be passable to it:
+//!    - It has to fit the pattern of the parameter, which is the type of the parameter with every variable left
+//!      open: it casts implicitly to the pattern with its own parts in the place of the variables. INTEGER[3] fits
+//!      T[] as INTEGER[], INTEGER fits DECIMAL(W, S) as DECIMAL(10, 0), anything fits a type variable by itself, and
+//!      for a type that uses no variable the pattern is the type. The cast from there to the type the argument is
+//!      passed as is explicit - no implicit cast to that type is asked for: BOOLEAN and INTEGER fit (T, T), and
+//!      both are passed as INTEGER. A setting could ask for that implicit cast as well.
+//!    - An argument that has no parts for the pattern of a type with arguments (T[], DECIMAL(W, S), FLOAT[N]) has
+//!      to cast implicitly to the type it is passed as. A VARIANT and a string literal are passed to T[] this way.
+//!      There is no such way to a type variable or a value variable by itself.
+//!    - A NULL and an unresolved parameter are passed as the type of the parameter - a NULL as it is, if a variable
+//!      of that type is not determined.
 //!    An overload is not a candidate if a variable is not determined that the return type uses, or the type that
-//!    an argument is deferred to.
+//!    an argument is passed as.
 //!
 //! 3. Rank. Every candidate has a rank of six numbers. Two candidates are compared number by number in the order of
 //!    the rules below, and the first difference decides:
@@ -138,10 +140,11 @@ struct ArgumentLayout {
 //!    2. unconstrained_arguments, fewer is better: the arguments, other than a NULL, that are passed to a parameter
 //!       whose type uses an unconstrained type variable.
 //!    3. cast_cost, lower is better: the sum of the implicit cast costs of the arguments. An argument costs the
-//!       implicit cast to the type of step 2: the declared type, the instance made of its own parts, which is 0 for
-//!       its own type, or for a deferred argument the type it is passed as. A NULL costs the cast of a NULL to the
-//!       kind of type the parameter declares, and 5 if the parameter is declared as an unconstrained type variable
-//!       by itself.
+//!       implicit cast of step 2: to the pattern with its own parts, which is 0 for its own type, or - without
+//!       parts for it - to the type it is passed as. A NULL costs the cast of a NULL to the type it is passed as.
+//!       That is the type of a NULL if a type variable is passed nothing else, constrained or not: nothing is
+//!       taken from the constraint. A NULL that is passed as it is costs the cast to the type the parameter names
+//!       (FLOAT[N] an array, GEOMETRY(C) a geometry).
 //!    4. variable_parameters, fewer is better: the arguments that are passed to a parameter whose type uses a type
 //!       variable, constrained or not.
 //!    5. declared_structure, more is better: over the arguments of rule 4, 2 for every type that the type of the

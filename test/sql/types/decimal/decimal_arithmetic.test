@@ -264,3 +264,32 @@ query IIIIII
 SELECT d + i, typeof(d + i), b - d, typeof(b - d), d % i, typeof(d % i) FROM decimal_operands LIMIT 1;
 ----
 2.50	DECIMAL(13,2)	0.50	DECIMAL(22,2)	0.50	DECIMAL(12,2)
+
+# the same for an integer factor of a decimal product
+statement ok
+CREATE TABLE decimal_factors AS SELECT 1.5::DECIMAL(5,2) AS d, 3::TINYINT AS t, 4::SMALLINT AS s FROM range(3);
+
+query II
+EXPLAIN SELECT d * t FROM decimal_factors;
+----
+physical_plan	<REGEX>:[\s\S]*CAST\(t AS DECIMAL\(8,0\)\)[\s\S]*
+
+query II
+EXPLAIN SELECT d * t FROM decimal_factors;
+----
+physical_plan	<!REGEX>:[\s\S]*CAST\(CAST\([\s\S]*
+
+query II
+EXPLAIN SELECT s * d FROM decimal_factors;
+----
+physical_plan	<REGEX>:[\s\S]*CAST\(s AS DECIMAL\(10,0\)\)[\s\S]*
+
+query II
+EXPLAIN SELECT s * d FROM decimal_factors;
+----
+physical_plan	<!REGEX>:[\s\S]*CAST\(CAST\([\s\S]*
+
+query IIII
+SELECT d * t, typeof(d * t), s * d, typeof(s * d) FROM decimal_factors LIMIT 1;
+----
+4.50	DECIMAL(8,2)	6.00	DECIMAL(10,2)
