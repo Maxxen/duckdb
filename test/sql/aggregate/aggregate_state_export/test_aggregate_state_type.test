@@ -305,3 +305,28 @@ query T
 SELECT (regr_avgx(1.0, 2.0) export_state)::struct(sum double, count ubigint);
 ----
 {'sum': 2.0, 'count': 1}
+
+# A NULL next to a state takes the type of the state, in either position
+statement ok
+CREATE TABLE t_null_state AS SELECT sum(range) EXPORT_STATE AS state FROM range(3);
+
+query TT
+SELECT typeof(list_value(state, NULL)), typeof(list_value(NULL, state)) FROM t_null_state;
+----
+AGGREGATE_STATE[]	AGGREGATE_STATE[]
+
+query II
+SELECT finalize(list_value(state, NULL)[1]), list_value(NULL, state)[1] IS NULL FROM t_null_state;
+----
+3	true
+
+query TI
+SELECT typeof(list_contains([state], NULL)), list_contains([state], NULL) FROM t_null_state;
+----
+BOOLEAN	NULL
+
+# A plain value does not become a state
+statement error
+SELECT list_value(state, 1) FROM t_null_state;
+----
+<REGEX>:Binder Error:.*Cannot deduce template type 'T'.*

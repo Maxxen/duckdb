@@ -13,23 +13,28 @@
 
 namespace duckdb {
 
-//! The type that a type is passed as where a type of the given kind is expected: itself if it is of the kind, else
-//! e.g. DECIMAL(10,0) for an INTEGER passed as a DECIMAL - nullopt if it is not passed as one. The cases are
-//! hard-coded for now: a generic coercion lookup of the cast rules is to take the place of this function
-static optional<LogicalType> CoerceToKind(const LogicalType &type, LogicalTypeId kind) {
-	// a struct with and without names are of one kind, and so are a list and an array: which of the two a function
-	// takes is its to check, or up to the cast rules
+//! Whether a type is of the given kind. A struct with and without names are of one kind, and so are a list and an
+//! array: which of the two a function takes is its to check, or up to the cast rules. A NULL is of every kind
+static bool IsOfKind(const LogicalType &type, LogicalTypeId kind) {
 	const bool takes_struct = kind == LogicalTypeId::STRUCT || kind == LogicalTypeId::TUPLE;
 	const bool is_struct = type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::TUPLE;
 	const bool takes_list = kind == LogicalTypeId::LIST || kind == LogicalTypeId::ARRAY;
 	const bool is_list = type.id() == LogicalTypeId::LIST || type.id() == LogicalTypeId::ARRAY;
-	if (type.id() == kind || (takes_struct && is_struct) || (takes_list && is_list)) {
+	return type.id() == kind || type.id() == LogicalTypeId::SQLNULL || (takes_struct && is_struct) ||
+	       (takes_list && is_list);
+}
+
+//! The type that a type is passed as where a type of the given kind is declared with its arguments: itself if it is
+//! of the kind, else e.g. DECIMAL(10,0) for an INTEGER passed as a DECIMAL(W, S) - nullopt if it is not passed as
+//! one. The cases are hard-coded for now: a generic coercion lookup of the cast rules is to take the place of this
+//! function
+static optional<LogicalType> CoerceToKind(const LogicalType &type, LogicalTypeId kind) {
+	if (IsOfKind(type, kind)) {
 		return type;
 	}
 	uint32_t width, scale;
-	if (kind == LogicalTypeId::DECIMAL && type.id() != LogicalTypeId::SQLNULL &&
-	    type.GetDecimalProperties(width, scale)) {
-		// a number is passed as the decimal that holds it - a NULL is not a number
+	if (kind == LogicalTypeId::DECIMAL && type.GetDecimalProperties(width, scale)) {
+		// a number is passed as the decimal that holds it
 		return LogicalType::DECIMAL(width, scale);
 	}
 	return nullopt;
@@ -80,20 +85,19 @@ static LogicalType ValueVariableType(const TypeVariable &variable) {
 	return variable.GetKind() == TypeVariable::Kind::INTEGER ? LogicalType::BIGINT : LogicalType::VARCHAR;
 }
 
-//! The type a type variable stands for where an argument has the given type in its place, by that argument alone:
-//! normalized, or coerced to the kind of a constrained variable - a type with an alias is a type of its own. Nothing
-//! if the argument has no type there, or not one of the kind
+//! The type a type variable is, given the type the arguments say it is: normalized. A variable that only an
+//! unresolved parameter says leaves the call unresolved. Nothing if there is no type, or it is not of the kind of a
+//! constrained variable: no type is converted to be of the kind, and a type with an alias is a type of its own
 static optional<LogicalType> GetVariableType(const LogicalType &type, LogicalTypeId constraint) {
-	if (IsUntyped(type)) {
-		return type;
-	}
-	if (constraint != LogicalTypeId::INVALID) {
-		return type.GetAlias().empty() ? CoerceToKind(type, constraint) : nullopt;
-	}
 	if (type.id() == LogicalTypeId::INVALID) {
 		return nullopt;
 	}
-	return LogicalType::NormalizeType(type);
+	// throws for an unresolved parameter
+	auto result = LogicalType::NormalizeType(type);
+	if (constraint != LogicalTypeId::INVALID && !(result.GetAlias().empty() && IsOfKind(result, constraint))) {
+		return nullopt;
+	}
+	return result;
 }
 
 //! The parameter of a type that an argument of a type name is paired with: the one of its label if both have a name,
@@ -160,10 +164,10 @@ static optional<LogicalType> PairType(const TypeName &name, LogicalTypeId kind, 
 
 //! Binds a type name: the type it stands for with the variables of the signature as "variables" says they are. For
 //! the type of a parameter, "instance" is the type of the argument that is passed to it - invalid for a part of the
-//! name the argument has no type in the place of. A variable that "variables" does not say is what the argument has
-//! in its place: ANY, which is a type variable of its own for every argument, and every variable when it is the type
-//! an argument has by itself that is asked for. Without an argument ANY is a type. Returns nothing if a variable is
-//! not determined
+//! name the argument has no type in the place of. A variable that "variables" does not say is what the one argument
+//! says it is, see GetVariableType: ANY, which is a type variable of its own for every argument, and every variable
+//! when it is the type an argument has by itself that is asked for. Without an argument ANY is a type. Returns
+//! nothing if a variable is not determined
 static optional<LogicalType> BindTypeNameInternal(TypeCache &cache, const TypeName &name,
                                                   const FunctionSignature &signature,
                                                   const FunctionVariables &variables,
@@ -223,17 +227,16 @@ static optional<LogicalType> BindTypeNameInternal(TypeCache &cache, const TypeNa
 				value = parameter->DefaultTryCastAs(ValueVariableType(*value_variable));
 			}
 		} else if (argument.IsType()) {
-			// the type the argument has there, invalid if it has none
+			// the type the argument has there, invalid if it has none - an unresolved parameter has no parts: it
+			// says of every part what it says of the whole
 			LogicalType part;
 			if (is_type) {
 				part = TypeValue::GetType(*parameter);
+			} else if (instance && instance->id() == LogicalTypeId::UNKNOWN) {
+				part = *instance;
 			}
 			auto &part_name = argument.GetType();
 			auto type = BindTypeNameInternal(cache, part_name, signature, variables, instance ? &part : nullptr);
-			if (!type && IsUntyped(part)) {
-				// a NULL where the argument says nothing about the variables is passed as it is
-				type = part;
-			}
 			if (type) {
 				value = Value::TYPE(std::move(*type));
 			}
@@ -302,7 +305,6 @@ private:
 	Result<ArgumentLayout, MatchFailure> Layout() const;
 	Result<VariableBindings, MatchFailure> Collect(const ArgumentLayout &layout) const;
 	Result<FunctionVariables, MatchFailure> Infer(const ArgumentLayout &layout, const VariableBindings &bindings) const;
-	bool NeedsUnresolvedParameter(const ArgumentLayout &layout, const FunctionVariables &variables) const;
 	Result<vector<LogicalType>, MatchFailure> Substitute(const ArgumentLayout &layout,
 	                                                     const FunctionVariables &variables) const;
 	Result<FunctionRank, MatchFailure> Rank(const ArgumentLayout &layout, const vector<LogicalType> &types) const;
@@ -545,30 +547,29 @@ Result<VariableBindings, MatchFailure> OverloadMatcher::Collect(const ArgumentLa
 //===--------------------------------------------------------------------===//
 // Infer
 //===--------------------------------------------------------------------===//
-//! The type two types are promoted to - without a client context, with the built-in casts only
+//! The type two types are promoted to - without a client context, with the built-in casts only. A NULL and an
+//! unresolved parameter take the other type as it is: a literal stays a literal until the type is final
 static bool TryUnifyTypes(optional_ptr<ClientContext> context, const LogicalType &left, const LogicalType &right,
                           LogicalType &result, optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
-	if (!context) {
-		return LogicalType::DefaultTryGetMaxLogicalTypeUnchecked(left, right, result);
-	}
-	if (decimal_width_limit) {
-		return LogicalType::TryGetMaxLogicalType(*context, left, right, result, *decimal_width_limit);
-	}
-	return LogicalType::TryGetMaxLogicalType(*context, left, right, result);
+	return LogicalType::TryGetMaxLogicalType(context, left, right, result, decimal_width_limit,
+	                                         PromotionPolicy::NormalizeLiterals(false));
 }
 
 //! Infer what the variables of a signature are from what the arguments say they are: the types the arguments say a
 //! type variable is are promoted to one type, and the values they say a value variable is have to be the same. In
 //! the promotion a NULL and an unresolved parameter take the other type, so a type variable is the type of a NULL if
-//! only NULLs are passed as it, and not determined if an unresolved parameter is among them. A value variable that
-//! no argument says is not determined. Returns why not: the arguments say different things about a variable, or
-//! what they say a constrained variable is is not of its kind. What the call needs to be determined is up to
-//! Substitute
+//! only NULLs are passed as it. A value variable that no argument says is not determined. A variable that is left
+//! to an unresolved parameter - no other argument says what it is - leaves the call unresolved, whatever the other
+//! overloads are and whether or not the other arguments can be passed. Returns why not: the arguments say different
+//! things about a variable, or what they say a constrained variable is is not of its kind. What the call needs to
+//! be determined is up to Substitute
 Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLayout &layout,
                                                                const VariableBindings &bindings) const {
 	auto context = cache.GetContext();
 	auto &arguments = layout.arguments;
 	FunctionVariables variables;
+	// whether a value variable is left to an unresolved parameter
+	bool is_unresolved = false;
 	for (auto &variable : signature.GetVariables()) {
 		auto &variable_name = variable.GetName().GetIdentifierName();
 		FunctionMismatch::TemplateDeduction conflict;
@@ -576,8 +577,13 @@ Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLay
 
 		if (variable.IsValue()) {
 			Value value;
+			bool has_parameter = false;
 			for (auto &binding : bindings) {
-				if (!RefersToSameObject(binding.variable.get(), variable) || binding.value.IsNull()) {
+				if (!RefersToSameObject(binding.variable.get(), variable)) {
+					continue;
+				}
+				if (binding.value.IsNull()) {
+					has_parameter = has_parameter || arguments[binding.argument].type.id() == LogicalTypeId::UNKNOWN;
 					continue;
 				}
 				if (!value.IsNull() && !Value::NotDistinctFrom(value, binding.value)) {
@@ -587,6 +593,7 @@ Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLay
 				}
 				value = binding.value;
 			}
+			is_unresolved = is_unresolved || (value.IsNull() && has_parameter);
 			if (!value.IsNull()) {
 				variables.values[variable_name] = std::move(value);
 			}
@@ -640,55 +647,21 @@ Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLay
 		if (entry == variables.types.end()) {
 			continue;
 		}
-		if (entry->second.id() == LogicalTypeId::UNKNOWN) {
-			// an unresolved parameter does not determine the variable
-			variables.types.erase(entry);
-			continue;
+		// arguments of the kind can still be promoted to a type that is not of it, e.g. two enums to VARCHAR
+		auto type = GetVariableType(entry->second, signature.GetConstraint(variable.GetName()));
+		if (!type) {
+			FunctionMismatch::TemplateDeduction conflict;
+			conflict.template_name = variable_name;
+			conflict.inferred_types.push_back(LogicalType::NormalizeType(entry->second));
+			return Err(MatchFailure {0, std::move(conflict)});
 		}
-		auto type = LogicalType::NormalizeType(entry->second);
-		auto constraint = signature.GetConstraint(variable.GetName());
-		if (constraint != LogicalTypeId::INVALID && type.id() != LogicalTypeId::SQLNULL) {
-			// coerced to the kind, e.g. the DECIMAL that integer arguments are passed as. Arguments of the kind can
-			// still be promoted to a type that is not of it, e.g. two enums to VARCHAR - a NULL is of any kind
-			auto coerced_type = CoerceToKind(type, constraint);
-			if (!coerced_type) {
-				FunctionMismatch::TemplateDeduction conflict;
-				conflict.template_name = variable_name;
-				conflict.inferred_types.push_back(std::move(type));
-				return Err(MatchFailure {0, std::move(conflict)});
-			}
-			type = std::move(*coerced_type);
-		}
-		entry->second = std::move(type);
+		entry->second = std::move(*type);
+	}
+	if (is_unresolved) {
+		throw ParameterNotResolvedException();
 	}
 
 	return std::move(variables);
-}
-
-//===--------------------------------------------------------------------===//
-// Unresolved parameter
-//===--------------------------------------------------------------------===//
-//! Whether the overload needs an unresolved parameter of the call: the parameter is passed as a variable that no
-//! argument determines, and that variable is shared - the type of the parameter of another argument uses it as well,
-//! or the return type. A default is not an argument of the call
-bool OverloadMatcher::NeedsUnresolvedParameter(const ArgumentLayout &layout, const FunctionVariables &variables) const {
-	auto &return_type = signature.GetReturnType();
-	for (auto &variable : signature.GetVariables()) {
-		auto &variable_name = variable.GetName().GetIdentifierName();
-		const bool is_determined = variables.types.count(variable_name) + variables.values.count(variable_name) > 0;
-		idx_t occurrences = return_type.IsType() && return_type.GetTypeName().Contains(variable.GetName()) ? 1 : 0;
-		bool has_parameter = false;
-		for (auto &argument : layout.arguments) {
-			auto &name = signature.GetParameter(argument.parameter_index).GetTypeName();
-			const bool is_occurrence = !argument.IsDefaultArgument() && name.Contains(variable.GetName());
-			occurrences += is_occurrence ? 1 : 0;
-			has_parameter = has_parameter || (is_occurrence && argument.type.id() == LogicalTypeId::UNKNOWN);
-		}
-		if (!is_determined && has_parameter && occurrences > 1) {
-			return true;
-		}
-	}
-	return false;
 }
 
 //===--------------------------------------------------------------------===//
@@ -716,8 +689,8 @@ Result<vector<LogicalType>, MatchFailure> OverloadMatcher::Substitute(const Argu
 	for (auto &argument : layout.arguments) {
 		auto &name = signature.GetParameter(argument.parameter_index).GetTypeName();
 		auto type = BindType(name, variables, argument.type);
-		if (!type && IsUntyped(argument.type)) {
-			// a NULL or an unresolved parameter is passed as it is where nothing determines the type of the parameter
+		if (!type && argument.type.id() == LogicalTypeId::SQLNULL) {
+			// a NULL is passed as it is where nothing determines the type of the parameter
 			type = argument.type;
 		}
 		if (!type) {
@@ -861,11 +834,9 @@ Result<FunctionRank, MatchFailure> OverloadMatcher::Rank(const ArgumentLayout &l
 // Match
 //===--------------------------------------------------------------------===//
 //! Match the call against the overload, in passes over the arguments: lay them out over the parameters, collect what
-//! they say the variables are, infer the variables, check whether the overload needs an unresolved parameter,
-//! substitute the variables for the types the arguments are passed as, and rank how well they are passed (see
-//! FunctionRank). An overload that needs an unresolved parameter leaves the call unresolved once its shape fits and
-//! the arguments agree about the variables, whatever the other overloads are - and whether or not the other
-//! arguments can be passed
+//! they say the variables are, infer the variables, substitute them for the types the arguments are passed as, and
+//! rank how well they are passed (see FunctionRank). An unresolved parameter is passed as a type the overload
+//! declares or the other arguments determine - else the call is unresolved, see GetVariableType and Infer
 Result<FunctionBinding, MatchFailure> OverloadMatcher::Match() const {
 	auto layout = Layout();
 	if (!layout) {
@@ -878,9 +849,6 @@ Result<FunctionBinding, MatchFailure> OverloadMatcher::Match() const {
 	auto variables = Infer(*layout, *bindings);
 	if (!variables) {
 		return Err(std::move(variables.GetError()));
-	}
-	if (NeedsUnresolvedParameter(*layout, *variables)) {
-		throw ParameterNotResolvedException();
 	}
 	auto types = Substitute(*layout, *variables);
 	if (!types) {
@@ -895,6 +863,7 @@ Result<FunctionBinding, MatchFailure> OverloadMatcher::Match() const {
 	binding.variables = std::move(*variables);
 	binding.layout = std::move(*layout);
 	for (idx_t i = 0; i < types->size(); i++) {
+		D_ASSERT(!TypeVisitor::Contains((*types)[i], LogicalTypeId::UNKNOWN));
 		binding.layout.arguments[i].type = std::move((*types)[i]);
 	}
 	return std::move(binding);

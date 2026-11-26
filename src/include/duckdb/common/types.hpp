@@ -364,6 +364,19 @@ private:
 	hash_t ComputeHash() const;
 };
 
+//! How two types are promoted to a common type
+struct PromotionPolicy {
+	//! Whether a NULL or an unresolved parameter turns the literal it is combined with into its default type. If
+	//! not, it takes the other type as it is, whatever that type is
+	bool normalize_literals = true;
+
+	static PromotionPolicy NormalizeLiterals(bool normalize = true) {
+		PromotionPolicy policy;
+		policy.normalize_literals = normalize;
+		return policy;
+	}
+};
+
 struct LogicalType {
 	DUCKDB_API LogicalType();
 	DUCKDB_API LogicalType(LogicalTypeId id); // NOLINT: Allow implicit conversion from `LogicalTypeId`
@@ -505,6 +518,12 @@ struct LogicalType {
 	DUCKDB_API static LogicalType ForceMaxLogicalType(ClientContext &context, const LogicalType &left,
 	                                                  const LogicalType &right,
 	                                                  const DecimalWidthLimit &decimal_width_limit);
+	//! TryGetMaxLogicalType with a policy - without a context only the built-in rules are used, without a limit
+	//! the max_decimal_width setting
+	DUCKDB_API static bool TryGetMaxLogicalType(optional_ptr<ClientContext> context, const LogicalType &left,
+	                                            const LogicalType &right, LogicalType &result,
+	                                            optional_ptr<const DecimalWidthLimit> decimal_width_limit,
+	                                            const PromotionPolicy &policy);
 	//! Normalize a type - removing literals
 	DUCKDB_API static LogicalType NormalizeType(const LogicalType &type);
 	//! Nested type children with Parquet style names

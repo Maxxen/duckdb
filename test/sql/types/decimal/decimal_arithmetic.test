@@ -214,3 +214,53 @@ SELECT 2.0 * 1.0,
 ----
 2.0
 2.0000
+
+# an integer operand of a decimal +, - or % is cast to the result type once, not through the decimal that holds it
+statement ok
+CREATE TABLE decimal_operands AS SELECT 1.5::DECIMAL(5,2) AS d, 1::INTEGER AS i, 2::BIGINT AS b FROM range(3);
+
+query II
+EXPLAIN SELECT d + i FROM decimal_operands;
+----
+physical_plan	<REGEX>:[\s\S]*CAST\(i AS DECIMAL\(13,2\)\)[\s\S]*
+
+query II
+EXPLAIN SELECT d + i FROM decimal_operands;
+----
+physical_plan	<!REGEX>:[\s\S]*CAST\(CAST\([\s\S]*
+
+query II
+EXPLAIN SELECT b - d FROM decimal_operands;
+----
+physical_plan	<REGEX>:[\s\S]*CAST\(b AS DECIMAL\(22,2\)\)[\s\S]*
+
+query II
+EXPLAIN SELECT b - d FROM decimal_operands;
+----
+physical_plan	<!REGEX>:[\s\S]*CAST\(CAST\([\s\S]*
+
+query II
+EXPLAIN SELECT d % i FROM decimal_operands;
+----
+physical_plan	<REGEX>:[\s\S]*CAST\(i AS DECIMAL\(12,2\)\)[\s\S]*
+
+query II
+EXPLAIN SELECT d % i FROM decimal_operands;
+----
+physical_plan	<!REGEX>:[\s\S]*CAST\(CAST\([\s\S]*
+
+# a cast that can fail is kept: a HUGEINT does not always fit DECIMAL(38,0), and neither does a narrower cast by hand
+query II
+EXPLAIN SELECT d + i::HUGEINT FROM decimal_operands;
+----
+physical_plan	<REGEX>:[\s\S]*CAST\(CAST\(i AS HUGEINT\) AS DECIMAL\(38,0\)\)[\s\S]*
+
+query II
+EXPLAIN SELECT d + i::DECIMAL(5,0) FROM decimal_operands;
+----
+physical_plan	<REGEX>:[\s\S]*CAST\(CAST\(i AS DECIMAL\(5,0\)\) AS DECIMAL\(8,2\)\)[\s\S]*
+
+query IIIIII
+SELECT d + i, typeof(d + i), b - d, typeof(b - d), d % i, typeof(d % i) FROM decimal_operands LIMIT 1;
+----
+2.50	DECIMAL(13,2)	0.50	DECIMAL(22,2)	0.50	DECIMAL(12,2)

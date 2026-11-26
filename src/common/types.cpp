@@ -1273,14 +1273,15 @@ static bool TryGetMaxLogicalTypeInternal(LogicalTypeResolver &logical_type_resol
                                          const LogicalType &right, LogicalType &result);
 static LogicalType ForceMaxLogicalTypeInternal(optional_ptr<ClientContext> context, const LogicalType &left,
                                                const LogicalType &right,
-                                               optional_ptr<const DecimalWidthLimit> decimal_width_limit);
+                                               optional_ptr<const DecimalWidthLimit> decimal_width_limit,
+                                               const PromotionPolicy &policy = PromotionPolicy());
 
 class ForceLogicalTypeResolver : public LogicalTypeResolver {
 public:
 	using LogicalTypeResolver::LogicalTypeResolver;
 
 	bool Operation(const LogicalType &left, const LogicalType &right, LogicalType &result) override {
-		result = ForceMaxLogicalTypeInternal(context, left, right, decimal_width_limit);
+		result = ForceMaxLogicalTypeInternal(context, left, right, decimal_width_limit, policy);
 		return true;
 	}
 };
@@ -1388,11 +1389,18 @@ static bool TryGetMaxLogicalTypeInternal(LogicalTypeResolver &logical_type_resol
 static bool TryGetMaxLogicalTypeChecked(ClientContext &context, const LogicalType &left, const LogicalType &right,
                                         LogicalType &result,
                                         optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
-	if (Settings::Get<OldImplicitCastingSetting>(context)) {
-		result = ForceMaxLogicalTypeInternal(&context, left, right, decimal_width_limit);
+	return LogicalType::TryGetMaxLogicalType(&context, left, right, result, decimal_width_limit, PromotionPolicy());
+}
+
+bool LogicalType::TryGetMaxLogicalType(optional_ptr<ClientContext> context, const LogicalType &left,
+                                       const LogicalType &right, LogicalType &result,
+                                       optional_ptr<const DecimalWidthLimit> decimal_width_limit,
+                                       const PromotionPolicy &policy) {
+	if (context && Settings::Get<OldImplicitCastingSetting>(*context)) {
+		result = ForceMaxLogicalTypeInternal(context, left, right, decimal_width_limit, policy);
 		return true;
 	}
-	TryGetLogicalTypeResolver logical_type_resolver(&context, decimal_width_limit);
+	TryGetLogicalTypeResolver logical_type_resolver(context, decimal_width_limit, policy);
 	return TryGetMaxLogicalTypeInternal(logical_type_resolver, left, right, result);
 }
 
@@ -1523,9 +1531,10 @@ static idx_t GetLogicalTypeScore(const LogicalType &type) {
 
 static LogicalType ForceMaxLogicalTypeInternal(optional_ptr<ClientContext> context, const LogicalType &left,
                                                const LogicalType &right,
-                                               optional_ptr<const DecimalWidthLimit> decimal_width_limit) {
+                                               optional_ptr<const DecimalWidthLimit> decimal_width_limit,
+                                               const PromotionPolicy &policy) {
 	LogicalType result;
-	ForceLogicalTypeResolver logical_type_resolver(context, decimal_width_limit);
+	ForceLogicalTypeResolver logical_type_resolver(context, decimal_width_limit, policy);
 	if (TryGetMaxLogicalTypeInternal(logical_type_resolver, left, right, result)) {
 		return result;
 	}

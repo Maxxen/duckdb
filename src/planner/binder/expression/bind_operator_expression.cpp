@@ -54,8 +54,6 @@ LogicalType ExpressionBinder::ResolveCoalesceType(OperatorExpression &op, vector
 		}
 	}
 
-	// a literal that only met NULLs is still a literal
-	max_type = LogicalType::NormalizeType(max_type);
 	// cast all children to the same type
 	for (auto &child : children) {
 		child = BoundCastExpression::AddCastToType(context, std::move(child), max_type);

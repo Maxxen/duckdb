@@ -8,6 +8,7 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
+#include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/expression_binder.hpp"
 #include "duckdb/function/function_binder.hpp"
 
@@ -83,27 +84,34 @@ ExpressionType ComparisonGetExpressionType(FunctionToStringInput &input) {
 	return TYPE;
 }
 
-//! Cast the arguments of a comparison to a common type - both for comparison operators and for "="(a, b)
-template <ExpressionType TYPE>
-static unique_ptr<FunctionData> ComparisonBind(BindScalarFunctionInput &input) {
-	auto &context = input.GetClientContext();
-	auto &arguments = input.GetArguments();
+//! Cast the two sides of a comparison to the type they are compared as, and push its collation - both for
+//! comparison operators and for "="(a, b)
+static void CastComparisonArguments(ClientContext &context, ExpressionType type,
+                                    vector<unique_ptr<Expression>> &arguments,
+                                    const DecimalWidthLimit &decimal_width_limit) {
 	auto left_type = ExpressionBinder::GetExpressionReturnType(*arguments[0]);
 	auto right_type = ExpressionBinder::GetExpressionReturnType(*arguments[1]);
 	LogicalType input_type;
-	if (!BoundComparisonExpression::TryBindComparison(context, left_type, right_type, input_type, TYPE,
-	                                                  input.GetDecimalWidthLimit())) {
+	if (!BoundComparisonExpression::TryBindComparison(context, left_type, right_type, input_type, type,
+	                                                  decimal_width_limit)) {
 		throw BinderException("Cannot compare values of type %s and type %s - an explicit cast is required",
 		                      left_type.ToString(), right_type.ToString());
 	}
-	auto &bound_function = input.GetBoundFunction();
-	for (idx_t i = 0; i < arguments.size(); i++) {
-		auto &argument = arguments[i];
+	for (auto &argument : arguments) {
 		argument = BoundCastExpression::AddCastToType(context, std::move(argument), input_type,
 		                                              input_type.id() == LogicalTypeId::ENUM);
 		ExpressionBinder::PushCollation(context, argument, input_type);
-		// the function receives the arguments as what they are compared as
-		bound_function.GetArguments()[i] = argument->GetReturnType();
+	}
+}
+
+template <ExpressionType TYPE>
+static unique_ptr<FunctionData> ComparisonBind(BindScalarFunctionInput &input) {
+	auto &arguments = input.GetArguments();
+	CastComparisonArguments(input.GetClientContext(), TYPE, arguments, input.GetDecimalWidthLimit());
+	// the function receives the arguments as what they are compared as
+	auto &bound_function = input.GetBoundFunction();
+	for (idx_t i = 0; i < arguments.size(); i++) {
+		bound_function.GetArguments()[i] = arguments[i]->GetReturnType();
 	}
 	return nullptr;
 }
@@ -223,9 +231,15 @@ unique_ptr<Expression> BoundComparisonExpression::Bind(ClientContext &context, E
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
 
+	// a comparison picks the type it compares as before it is matched: an unresolved parameter on one side is
+	// compared as the type of the other side
+	CastComparisonArguments(context, type, children,
+	                        binder ? binder->GetDecimalWidthLimit() : DecimalWidthLimit::FromSetting(context));
 	auto function = FunctionBinder::BindScalarFunction(&context, GetComparisonFunction(type), children);
-	BindScalarFunctionInput input(context, function, children, binder);
-	function.GetBindCallback()(input);
+	// the function receives the arguments as what they are compared as
+	for (idx_t i = 0; i < children.size(); i++) {
+		function.GetArguments()[i] = children[i]->GetReturnType();
+	}
 	return make_uniq<BoundFunctionExpression>(std::move(function), std::move(children), nullptr, true);
 }
 

@@ -51,8 +51,8 @@ struct ResolvedTableFunction {
 
 //! What a call determines the variables of a signature to be
 struct FunctionVariables {
-	//! The types of the type variables: normalized, and coerced to the kind of a constrained variable, e.g. integers
-	//! to DECIMAL(10,0). SQLNULL or UNKNOWN if the arguments that determine one say nothing
+	//! The types of the type variables: normalized, and of the kind of a constrained variable. SQLNULL if only NULLs
+	//! are passed as one
 	case_insensitive_map_t<LogicalType> types;
 	//! The values of the value variables. NULL if the arguments that determine one say nothing, as an unresolved
 	//! parameter does
@@ -110,14 +110,15 @@ struct ArgumentLayout {
 //!    says nothing: a MAP passed to T[] is not a list of its keys. A type variable is the promotion of the types
 //!    the arguments say it is, in the order of the arguments. A NULL and an unresolved parameter take the other
 //!    type in the promotion, wherever they are passed: [1, NULL, 2::TINYINT] is a TINYINT[] like [1, 2::TINYINT].
-//!    So a type variable is the type of a NULL if only NULLs are passed as it, and not determined if an unresolved
-//!    parameter is passed as it with nothing but NULLs and unresolved parameters. The promoted type is then made
-//!    final: a literal becomes its type, and a constrained variable has to be of its kind. A value variable is the
-//!    one value the arguments say it is, and not determined if none says one. An overload is not a candidate if
-//!    the arguments disagree about a variable, or promote a constrained variable out of its kind (two enums are
-//!    promoted to VARCHAR). It needs an unresolved parameter (step 4) if that parameter is passed as a variable
-//!    that is not determined and that is shared: the type of the parameter of another argument of the call uses
-//!    it as well, or the return type. Every argument then has to be passable to its parameter:
+//!    So a type variable is the type of a NULL if only NULLs are passed as it. The promoted type is then made
+//!    final: a literal becomes its type, and a constrained variable has to be of its kind, which the type of a NULL
+//!    is for every kind. No type is converted to be of the kind: an INTEGER is not a T IS DECIMAL, although it is
+//!    passed to DECIMAL(W, S) as DECIMAL(10, 0). A value variable is the one value the arguments say it is, and not
+//!    determined if none says one. An overload is not a candidate if the arguments disagree about a variable, or
+//!    promote a constrained variable out of its kind (two enums are promoted to VARCHAR). A variable that is left
+//!    to an unresolved parameter - a type variable, ANY or a value variable that the parameter is passed as, and
+//!    that no other argument says - leaves the call unresolved (step 4). Every argument then has to be passable to
+//!    its parameter:
 //!    - As an instance of the type of the parameter: it casts implicitly to that type with the variables as the
 //!      argument itself says they are. INTEGER[3] is passed to T[] as INTEGER[], INTEGER to DECIMAL(W, S) as
 //!      DECIMAL(10, 0), and any argument to a type that uses no variable as that type.
@@ -126,7 +127,7 @@ struct ArgumentLayout {
 //!      this way. Nothing is deferred to a type variable or a value variable by itself, and ANY is what the
 //!      argument itself has in its place.
 //!    - A NULL and an unresolved parameter are passed as the type of the parameter with the variables as the
-//!      arguments determine them - and as they are, if a variable of that type is not determined.
+//!      arguments determine them - a NULL as it is, if a variable of that type is not determined.
 //!    An overload is not a candidate if a variable is not determined that the return type uses, or the type that
 //!    an argument is deferred to.
 //!
@@ -151,15 +152,17 @@ struct ArgumentLayout {
 //!    Rules 4 to 6 count a parameter once for every argument of the call it receives, and not for a default. When the
 //!    arguments are cast explicitly, nothing is ranked.
 //!
-//! 4. Result. If an overload needs an unresolved parameter, the call is unresolved: it is bound again once the
-//!    parameter has a type, and no other overload is selected in its place, as that type may make this overload
-//!    the better match, or no match. That holds once the shape of the overload fits and the arguments agree about
-//!    the variables, whether or not its other arguments can be passed: they are only checked against the types the
-//!    parameter determines. Else the candidate that ranks before every other one is selected. Several candidates of
-//!    the best rank make the call ambiguous, which is an error - unless a positional argument is an unresolved
-//!    parameter: all candidates of such a call rank the same, and the call is unresolved as well. So is a call
-//!    whose selected candidate passes an unresolved parameter as it is: only a function that is bound to the types
-//!    of its arguments alone, such as a comparison, receives one.
+//! 4. Result. If an overload leaves a variable to an unresolved parameter, the call is unresolved: it is bound
+//!    again once the parameter has a type, and no other overload is selected in its place, as that type may make
+//!    this overload the better match, or no match. That holds once the shape of the overload fits and the arguments
+//!    agree about the variables, whether or not its other arguments can be passed: they are only checked against
+//!    the types the parameter determines. Else the candidate that ranks before every other one is selected. Several
+//!    candidates of the best rank make the call ambiguous, which is an error - unless a positional argument is an
+//!    unresolved parameter: all candidates of such a call rank the same, and the call is unresolved as well. So no
+//!    function is bound with an argument of an unknown type, however it is called: an unresolved parameter is
+//!    passed as a type the overload declares, or as one the other arguments determine. A function that takes the
+//!    type of such a parameter from its other arguments by a rule of its own does so before it is matched - a
+//!    comparison compares the parameter as the type of its other side.
 struct FunctionRank {
 	//! Rule 1: the arguments that are only cast implicitly because of the old_implicit_casting setting
 	idx_t legacy_casts = 0;

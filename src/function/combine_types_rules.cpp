@@ -9,8 +9,16 @@ namespace duckdb {
 // ===========================================
 // ================== ALIASES ================
 // ===========================================
+static bool UnequalMatchesNullOrUnknown(const LogicalType &left, const LogicalType &right);
+static bool CombineNullOrUnknown(LogicalTypeResolver &logical_type_resolver, const LogicalType &left,
+                                 const LogicalType &right, LogicalType &result);
+
 static bool CombineNoAliasTypes(LogicalTypeResolver &logical_type_resolver, const LogicalType &left,
                                 const LogicalType &right, LogicalType &result) {
+	if (!logical_type_resolver.policy.normalize_literals && UnequalMatchesNullOrUnknown(left, right)) {
+		// a NULL/unknown (parameter) type takes the other type whatever it is, also an aggregate state
+		return CombineNullOrUnknown(logical_type_resolver, left, right, result);
+	}
 	// a plain value cannot implicitly become an aggregate state
 	if (left.IsAggregateState() != right.IsAggregateState()) {
 		return false;
@@ -330,13 +338,16 @@ static bool EqualMatchesUnion(const LogicalType &left, const LogicalType &right)
 // ================== UNEQUAL ================
 // ===========================================
 
-static bool CombineNullOrUnknown(LogicalTypeResolver &, const LogicalType &left, const LogicalType &right,
-                                 LogicalType &result) {
-	// NULL/unknown (parameter) types always take the other type, as it is: a literal stays a literal
+static bool CombineNullOrUnknown(LogicalTypeResolver &logical_type_resolver, const LogicalType &left,
+                                 const LogicalType &right, LogicalType &result) {
+	// NULL/unknown (parameter) types always take the other type - by the policy a literal stays a literal
 	if (left.id() == LogicalTypeId::SQLNULL || right.id() == LogicalTypeId::SQLNULL) {
 		result = left.id() == LogicalTypeId::SQLNULL ? right : left;
 	} else {
 		result = left.id() == LogicalTypeId::UNKNOWN ? right : left;
+	}
+	if (logical_type_resolver.policy.normalize_literals) {
+		result = LogicalType::NormalizeType(result);
 	}
 	return true;
 }

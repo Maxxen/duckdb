@@ -7,7 +7,6 @@
 #include "duckdb/catalog/catalog_entry/window_function_catalog_entry.hpp"
 #include "duckdb/common/limits.hpp"
 #include "duckdb/common/numeric_utils.hpp"
-#include "duckdb/common/type_visitor.hpp"
 #include "duckdb/common/types/geometry_crs.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/function/aggregate_function.hpp"
@@ -456,13 +455,6 @@ ResolveArguments(const FunctionBinding &binding, vector<unique_ptr<Expression>> 
                  vector<pair<Identifier, unique_ptr<Expression>>> named_arguments) {
 	const auto &sig = binding.GetFunction().GetSignature();
 	const auto received_positional_count = arguments.size();
-	for (auto &argument : binding.layout.arguments) {
-		if (argument.type.id() == LogicalTypeId::UNKNOWN) {
-			// no argument determines the type of an unresolved parameter - the call is bound again at EXECUTE
-			throw ParameterNotResolvedException();
-		}
-		D_ASSERT(!TypeVisitor::Contains(argument.type, LogicalTypeId::UNKNOWN));
-	}
 
 	vector<unique_ptr<Expression>> result;
 	result.reserve(binding.layout.arguments.size());

@@ -17,8 +17,9 @@ class DecimalWidthLimit;
 class LogicalTypeResolver {
 public:
 	explicit LogicalTypeResolver(optional_ptr<ClientContext> context_p,
-	                             optional_ptr<const DecimalWidthLimit> decimal_width_limit_p = nullptr)
-	    : context(context_p), decimal_width_limit(decimal_width_limit_p) {
+	                             optional_ptr<const DecimalWidthLimit> decimal_width_limit_p = nullptr,
+	                             PromotionPolicy policy_p = PromotionPolicy())
+	    : context(context_p), decimal_width_limit(decimal_width_limit_p), policy(policy_p) {
 	}
 	virtual ~LogicalTypeResolver() = default;
 
@@ -30,6 +31,8 @@ public:
 	optional_ptr<ClientContext> context;
 	//! The limit of the DECIMAL widths the binder constructs, if one is given
 	optional_ptr<const DecimalWidthLimit> decimal_width_limit;
+	//! How the types are promoted
+	PromotionPolicy policy;
 };
 
 typedef bool (*combine_types_rule_function_t)(LogicalTypeResolver &resolver, const LogicalType &left,
