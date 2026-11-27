@@ -108,6 +108,12 @@ EXECUTE stmt({x: 5, y: 'test'});
 ----
 (5, test)
 
+# a struct without fields and a tuple without elements each select the overload of their kind
+query IIII
+SELECT struct_values(struct_pack()), typeof(struct_values(struct_pack())), struct_values(row()), typeof(struct_values(row()));
+----
+()	TUPLE	()	TUPLE
+
 # Error cases: non-STRUCT inputs should fail
 statement error
 select struct_values(42);

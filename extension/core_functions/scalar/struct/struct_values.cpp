@@ -56,7 +56,7 @@ static void StructValuesFunction(DataChunk &args, ExpressionState &state, Vector
 static LogicalType StructValuesReturnType(const ResolveReturnTypeInput &input) {
 	auto &struct_type = input.GetArgumentType(0);
 	if (struct_type.id() != LogicalTypeId::STRUCT) {
-		// the argument is NULL
+		// the argument is a tuple already, or NULL
 		return struct_type;
 	}
 	vector<LogicalType> unnamed_children;
@@ -68,12 +68,21 @@ static LogicalType StructValuesReturnType(const ResolveReturnTypeInput &input) {
 	return LogicalType::TUPLE(std::move(unnamed_children));
 }
 
-ScalarFunction StructValuesFun::GetFunction() {
-	return ScalarFunction(FunctionSignature()
-	                          .AddVariable("T", LogicalTypeId::STRUCT)
-	                          .AddParameter("struct", TypeName::VARIABLE("T"))
-	                          .SetReturnType(ReturnType::ANY(StructValuesReturnType)),
-	                      StructValuesFunction);
+ScalarFunctionSet StructValuesFun::GetFunctions() {
+	// a struct with names and a tuple: an overload for each, as neither is passed as the other
+	ScalarFunctionSet set;
+	set.AddFunction(
+	    ScalarFunction(FunctionSignature()
+	                       .AddNamedPack("KV")
+	                       .AddParameter("struct", TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")}))
+	                       .SetReturnType(ReturnType::ANY(StructValuesReturnType)),
+	                   StructValuesFunction));
+	set.AddFunction(ScalarFunction(FunctionSignature()
+	                                   .AddPack("T")
+	                                   .AddParameter("struct", TypeName::TUPLE({TypeName::PACK("T")}))
+	                                   .SetReturnType(ReturnType::ANY(StructValuesReturnType)),
+	                               StructValuesFunction));
+	return set;
 }
 
 } // namespace duckdb

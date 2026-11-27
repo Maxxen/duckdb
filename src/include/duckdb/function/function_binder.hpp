@@ -49,6 +49,42 @@ struct ResolvedTableFunction {
 	named_argument_map_t named_parameters;
 };
 
+//! The types a pack of a signature stands for in a call, in order - each with a label, for a named pack. A pack
+//! is a list of its own, whether it is made from the parameters of a type an argument has, as TUPLE(*T) passed a
+//! tuple, or from the types of the arguments "*args *T" receives
+class TypePack {
+public:
+	//! The pack of the given types, without labels
+	DUCKDB_API static TypePack Positional(vector<LogicalType> types);
+	//! The pack of the given types, each with its label
+	DUCKDB_API static TypePack Named(child_list_t<LogicalType> labelled_types);
+	//! The pack of the parameters of a type, e.g. the types of a tuple, or the labelled types of a struct
+	DUCKDB_API static TypePack ParametersOf(const LogicalType &type);
+
+public:
+	DUCKDB_API idx_t Count() const;
+	DUCKDB_API const LogicalType &GetType(idx_t index) const;
+	//! The label of an element, if it has one: the elements of a named pack do
+	DUCKDB_API optional_ptr<const Identifier> GetLabel(idx_t index) const;
+
+	//! As the elements are written: (INTEGER, VARCHAR), (a INTEGER, b VARCHAR)
+	DUCKDB_API string ToString() const;
+	//! Whether both have the same types, with the same labels, in the same order
+	DUCKDB_API bool operator==(const TypePack &other) const;
+	DUCKDB_API bool operator!=(const TypePack &other) const;
+
+private:
+	struct Element {
+		LogicalType type;
+		optional<Identifier> label;
+	};
+
+	explicit TypePack(vector<Element> elements);
+
+private:
+	vector<Element> elements;
+};
+
 //! What a call determines the variables of a signature to be
 struct FunctionVariables {
 	//! The types of the type variables: normalized, and of the kind of a constrained variable. SQLNULL if only NULLs
@@ -57,6 +93,8 @@ struct FunctionVariables {
 	//! The values of the value variables. NULL if the arguments that determine one say nothing, as an unresolved
 	//! parameter does
 	case_insensitive_map_t<Value> values;
+	//! The types of the packs
+	case_insensitive_map_t<TypePack> packs;
 };
 
 //! An argument a function is bound with
@@ -97,7 +135,7 @@ struct ArgumentLayout {
 };
 
 //! How well an overload matches a call. The overload of a function set that a call binds to is selected in four steps.
-//! A type variable of a signature is constrained if it only stands for types of one kind (T IS STRUCT), else it is
+//! A type variable of a signature is constrained if it only stands for types of one kind (T IS ENUM), else it is
 //! unconstrained. ANY is an unconstrained type variable of its own every time it is written.
 //!
 //! 1. Shape. An overload is a candidate only if the arguments of the call can be laid out over its parameters: a
@@ -114,11 +152,25 @@ struct ArgumentLayout {
 //!    final: a literal becomes its type, and a constrained variable has to be of its kind, which the type of a NULL
 //!    is for every kind. No type is converted to be of the kind: an INTEGER is not a T IS DECIMAL, although it is
 //!    passed to DECIMAL(W, S) as DECIMAL(10, 0). A value variable is the one value the arguments say it is, and not
-//!    determined if none says one. An overload is not a candidate if the arguments disagree about a variable, or
-//!    promote a constrained variable out of its kind (two enums are promoted to VARCHAR). A variable that is left
-//!    to an unresolved parameter - a type variable, ANY or a value variable that the parameter is passed as, and
-//!    that no other argument says - leaves the call unresolved (step 4). Every argument is then passed as the type
-//!    of its parameter with the variables as the arguments determine them, and has to be passable to it:
+//!    determined if none says one. A pack is the types the one argument that is passed as it has in its place, in
+//!    their order, and for a named pack each with its label: a tuple passed to TUPLE(*T) says that T is the types
+//!    of the tuple, a struct passed to STRUCT(**KV) that KV is its fields. Only a type of the kind of the name has
+//!    them: a struct with names says nothing about TUPLE(*T) and cannot be passed to it, nor a tuple to
+//!    STRUCT(**KV), like a list. A struct or a tuple that has no parts says the pack of no elements for either:
+//!    it is cast to the other kind, which costs 1, so an overload of its own kind is preferred. A NULL has no
+//!    types to say: the pack is not determined. A pack that the type of a variadic parameter expands is the
+//!    arguments the parameter receives, one element each: for row(*args *T), T is the types of the arguments, a
+//!    literal as its type and a NULL as the type of a NULL, and for struct_pack(**kwargs **KV) each with the name
+//!    of its argument as its label. Where a pattern is expanded, every argument is matched against the pattern and
+//!    the element is what it says the pack is there: for list_zip(*lists *(T[])), T is the element types of the
+//!    lists, and each list is passed as a list of its own element type. An argument that has no parts for the
+//!    pattern says no element and cannot be passed. Without an argument it is the pack of no elements. The
+//!    function still receives its arguments one by one. An overload is not a
+//!    candidate if the arguments disagree about a variable, or promote a constrained variable out of its kind (two
+//!    enums are promoted to VARCHAR). A variable that is left to an unresolved parameter - a type variable, ANY, a
+//!    value variable or a pack that the parameter is passed as, and that no other argument says - leaves the call
+//!    unresolved (step 4). Every argument is then passed as the type of its parameter with the variables as the
+//!    arguments determine them, and has to be passable to it:
 //!    - It has to fit the pattern of the parameter, which is the type of the parameter with every variable left
 //!      open: it casts implicitly to the pattern with its own parts in the place of the variables. INTEGER[3] fits
 //!      T[] as INTEGER[], INTEGER fits DECIMAL(W, S) as DECIMAL(10, 0), anything fits a type variable by itself, and
@@ -138,18 +190,18 @@ struct ArgumentLayout {
 //!    1. legacy_casts, fewer is better: the arguments whose cast is only implicit because of the
 //!       old_implicit_casting setting.
 //!    2. unconstrained_arguments, fewer is better: the arguments, other than a NULL, that are passed to a parameter
-//!       whose type uses an unconstrained type variable.
+//!       whose type uses an unconstrained type variable. A pack counts as one here and in rules 4 and 5.
 //!    3. cast_cost, lower is better: the sum of the implicit cast costs of the arguments. An argument costs the
 //!       implicit cast of step 2: to the pattern with its own parts, which is 0 for its own type, or - without
 //!       parts for it - to the type it is passed as. A NULL costs the cast of a NULL to the type it is passed as.
 //!       That is the type of a NULL if a type variable is passed nothing else, constrained or not: nothing is
 //!       taken from the constraint. A NULL that is passed as it is costs the cast to the type the parameter names
-//!       (FLOAT[N] an array, GEOMETRY(C) a geometry).
+//!       (FLOAT[N] an array, GEOMETRY(C) a geometry, TUPLE(*T) a tuple).
 //!    4. variable_parameters, fewer is better: the arguments that are passed to a parameter whose type uses a type
 //!       variable, constrained or not.
 //!    5. declared_structure, more is better: over the arguments of rule 4, 2 for every type that the type of the
-//!       parameter names and 1 for every constrained type variable in it. T[] counts 2, MAP(VARCHAR, T) counts 4,
-//!       T IS STRUCT counts 1, an unconstrained type variable counts 0.
+//!       parameter names and 1 for every constrained type variable in it. T[], TUPLE(*T) and STRUCT(**KV) count 2,
+//!       MAP(VARCHAR, T) counts 4, T IS ENUM counts 1, an unconstrained type variable counts 0.
 //!    6. declared_values, more is better: over all arguments, 2 for every literal and 1 for every value variable in
 //!       the type of the parameter. DECIMAL(18, 3) counts 4, DECIMAL(W, 0) counts 3, FLOAT[N] and GEOMETRY(C) count 1.
 //!    Rules 4 to 6 count a parameter once for every argument of the call it receives, and not for a default. When the

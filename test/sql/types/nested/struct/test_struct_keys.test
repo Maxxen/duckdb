@@ -79,7 +79,7 @@ NULL
 statement error
 select struct_keys(ROW(1, 2));
 ----
-struct_keys() expects a STRUCT argument
+Argument 1 of type TUPLE(INTEGER, INTEGER) cannot be implicitly cast to STRUCT(**KV)
 
 # Error cases: non-STRUCT inputs should fail
 statement error

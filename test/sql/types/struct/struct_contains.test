@@ -253,10 +253,21 @@ SELECT struct_contains(ROW(1.0::FLOAT, 2.0::DOUBLE), 1.0::FLOAT), struct_contain
 ----
 true	true
 
+# a struct without fields is searched like a tuple without elements
+query III
+SELECT struct_contains(struct_pack(), 1), struct_contains(row(), 1), 1 IN struct_pack();
+----
+false	false	false
+
+query I
+SELECT struct_position(struct_pack(), 1);
+----
+NULL
+
 # ==========================================================
 # Errors
 # ==========================================================
 statement error
 SELECT struct_contains({'a': 1, 'b': 2}, 2);
 ----
-<REGEX>:Binder Error.*"struct_contains" can only be used on unnamed structs.*
+<REGEX>:Binder Error.*Argument 1 of type STRUCT\(a INTEGER, b INTEGER\) cannot be implicitly cast to TUPLE\(\*T\).*

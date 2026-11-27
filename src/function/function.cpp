@@ -258,19 +258,33 @@ auto FunctionSignature::ExtendTypedKwargs(const std::function<void(TypedKwargs &
 	return *this;
 }
 
+//! A use of the variable that is written as the variable is declared
+static TypeName DeclaredUse(const TypeVariable &variable) {
+	switch (variable.GetMultiplicity()) {
+	case TypeMultiplicity::POSITIONAL_PACK:
+		return TypeName::PACK(variable.GetName().GetIdentifierName());
+	case TypeMultiplicity::NAMED_PACK:
+		return TypeName::NAMED_PACK(variable.GetName().GetIdentifierName());
+	default:
+		return TypeName::VARIABLE(variable.GetName().GetIdentifierName());
+	}
+}
+
 string TypeVariable::ToString() const {
+	// a pack is declared with the stars it is used with
+	auto declared = DeclaredUse(*this).ToString();
 	switch (kind) {
 	case Kind::INTEGER:
-		return name.GetIdentifierName() + ": INTEGER";
+		return declared + ": INTEGER";
 	case Kind::STRING:
-		return name.GetIdentifierName() + ": STRING";
+		return declared + ": STRING";
 	default:
-		return name.GetIdentifierName();
+		return declared;
 	}
 }
 
 bool TypeVariable::operator==(const TypeVariable &other) const {
-	return name == other.name && kind == other.kind;
+	return name == other.name && kind == other.kind && multiplicity == other.multiplicity;
 }
 
 bool TypeVariable::operator!=(const TypeVariable &other) const {
@@ -307,26 +321,39 @@ LogicalTypeId FunctionSignature::GetConstraint(const Identifier &variable) const
 	return LogicalTypeId::INVALID;
 }
 
-FunctionSignature &FunctionSignature::AddVariable(Identifier name, TypeVariable::Kind kind) {
+FunctionSignature &FunctionSignature::DeclareVariable(Identifier name, TypeVariable::Kind kind,
+                                                      TypeVariable::Multiplicity multiplicity) {
 	const bool is_any = name == TypeName(LogicalTypeId::ANY).GetName();
 	if (is_any || DefaultTypeGenerator::GetDefaultType(name) != LogicalTypeId::INVALID) {
 		// a type name is then either a variable or a type, whatever a site looks it up as first
 		throw InvalidInputException("Variable %s is named like a built-in type", name.GetIdentifierName());
 	}
 	auto variable = FindVariable(name);
-	if (variable && variable->GetKind() != kind) {
+	if (variable && (variable->GetKind() != kind || variable->GetMultiplicity() != multiplicity)) {
 		throw InternalException("Variable %s is declared twice, as different kinds of variable",
 		                        name.GetIdentifierName());
 	}
 	if (!variable) {
-		variables.emplace_back(std::move(name), kind);
+		variables.emplace_back(std::move(name), kind, multiplicity);
 	}
 	return *this;
 }
 
+FunctionSignature &FunctionSignature::AddVariable(Identifier name, TypeVariable::Kind kind) {
+	return DeclareVariable(std::move(name), kind, TypeVariable::Multiplicity::SINGLE);
+}
+
+FunctionSignature &FunctionSignature::AddPack(Identifier name) {
+	return DeclareVariable(std::move(name), TypeVariable::Kind::TYPE, TypeVariable::Multiplicity::POSITIONAL_PACK);
+}
+
+FunctionSignature &FunctionSignature::AddNamedPack(Identifier name) {
+	return DeclareVariable(std::move(name), TypeVariable::Kind::TYPE, TypeVariable::Multiplicity::NAMED_PACK);
+}
+
 FunctionSignature &FunctionSignature::AddConstraint(Identifier variable, LogicalTypeId kind) {
 	auto declared = FindVariable(variable);
-	if (!declared || declared->IsValue()) {
+	if (!declared || declared->IsValue() || declared->IsPack()) {
 		throw InternalException("Constraint on %s, which is not a type variable of the signature",
 		                        variable.GetIdentifierName());
 	}
@@ -343,6 +370,10 @@ FunctionSignature &FunctionSignature::AddConstraint(Identifier variable, Logical
 }
 
 bool FunctionSignature::AcceptsAnyType(const TypeName &type) const {
+	if (type.IsExpansion()) {
+		// every argument is passed as the pattern
+		return AcceptsAnyType(type.GetPattern());
+	}
 	if (type.IsBuiltinType(LogicalTypeId::ANY)) {
 		return true;
 	}
@@ -355,6 +386,9 @@ bool FunctionSignature::AcceptsAnyType(const TypeName &type) const {
 
 //! Whether a type name uses a variable of the signature, or ANY
 static bool UsesVariable(const FunctionSignature &signature, const TypeName &type) {
+	if (type.IsExpansion()) {
+		return UsesVariable(signature, type.GetPattern());
+	}
 	if (type.IsBuiltinType(LogicalTypeId::ANY)) {
 		return true;
 	}
@@ -372,6 +406,10 @@ static bool UsesVariable(const FunctionSignature &signature, const TypeName &typ
 //! Whether a type uses ANY, and whether it uses a type variable of the signature
 static void FindAnyAndTypeVariable(const FunctionSignature &signature, const TypeName &type, bool &uses_any,
                                    bool &uses_type_variable) {
+	if (type.IsExpansion()) {
+		FindAnyAndTypeVariable(signature, type.GetPattern(), uses_any, uses_type_variable);
+		return;
+	}
 	if (!type.HasArguments()) {
 		auto variable = signature.FindVariable(type.GetName());
 		uses_any = uses_any || type.IsBuiltinType(LogicalTypeId::ANY);
@@ -392,6 +430,10 @@ bool FunctionSignature::HasCompleteReturnType() const {
 //! The constraints a signature declares on the type variables a type uses
 static void CollectConstraints(const FunctionSignature &signature, const TypeName &type,
                                vector<LogicalTypeId> &constraints) {
+	if (type.IsExpansion()) {
+		CollectConstraints(signature, type.GetPattern(), constraints);
+		return;
+	}
 	if (!type.HasArguments()) {
 		auto variable = signature.FindVariable(type.GetName());
 		if (variable) {
@@ -580,6 +622,163 @@ hash_t FunctionSignature::Hash() const {
 	return hash;
 }
 
+//! Collect the packs of the signature the pattern of an expansion uses. A pack is referenced by its name inside the
+//! one expansion that expands it
+static void CollectExpandedPacks(const FunctionSignature &signature, const TypeName &expansion, const TypeName &pattern,
+                                 vector<reference<const TypeVariable>> &packs) {
+	if (pattern.IsExpansion()) {
+		throw InvalidInputException("'%s' expands '%s', which is an expansion itself: a pack is expanded once",
+		                            expansion.ToString(), pattern.ToString());
+	}
+	if (!pattern.HasArguments()) {
+		// no variable is named like a built-in type
+		auto variable =
+		    pattern.GetBuiltinType() == LogicalTypeId::INVALID ? signature.FindVariable(pattern.GetName()) : nullptr;
+		if (variable && variable->IsPack()) {
+			packs.push_back(*variable);
+		}
+		return;
+	}
+	for (auto &argument : pattern.GetArguments()) {
+		if (argument.IsType()) {
+			CollectExpandedPacks(signature, expansion, argument.GetType(), packs);
+		}
+	}
+}
+
+//! The pack of the signature an expansion expands: its pattern uses exactly one, of the kind of the expansion - a
+//! pack that is declared "*T" is expanded as "*T" or in a pattern as "*(T[])", one that is declared "**KV" as "**KV"
+static const TypeVariable &VerifyExpansion(const FunctionSignature &signature, const TypeName &expansion) {
+	auto &pattern = expansion.GetPattern();
+	vector<reference<const TypeVariable>> packs;
+	CollectExpandedPacks(signature, expansion, pattern, packs);
+	const bool is_bare = !pattern.HasArguments();
+	if (packs.empty() && is_bare) {
+		auto variable = signature.FindVariable(pattern.GetName());
+		if (variable) {
+			throw InvalidInputException("Variable '%s' is not a pack: it is used as '%s', not as '%s'",
+			                            variable->ToString(), pattern.ToString(), expansion.ToString());
+		}
+		throw InvalidInputException("'%s' is not a pack the signature declares", expansion.ToString());
+	}
+	if (packs.size() != 1) {
+		throw InvalidInputException("'%s' expands %s: an expansion is over one pack of the signature",
+		                            expansion.ToString(), packs.empty() ? "no pack" : "more than one pack");
+	}
+	auto &pack = packs[0].get();
+	const auto used = expansion.GetExpansionKind();
+	if (used != pack.GetMultiplicity() && used == TypeMultiplicity::NAMED_PACK) {
+		throw InvalidInputException("Pack '%s' is used as '%s': its types have no labels", pack.ToString(),
+		                            expansion.ToString());
+	}
+	if (used != pack.GetMultiplicity()) {
+		// the one use that is not written as the pack is declared and could be allowed: a named pack without its labels
+		throw InvalidInputException("Pack '%s' is used as '%s': using a named pack without its labels is not supported",
+		                            pack.ToString(), expansion.ToString());
+	}
+	return pack;
+}
+
+//! Whether a constructor of a type takes any number of types the way an expansion gives them: by position for "*T",
+//! by name for "**KV"
+static bool TakesPack(const vector<FunctionSignature> &constructors, TypeMultiplicity expansion_kind) {
+	for (auto &constructor : constructors) {
+		auto variadic =
+		    expansion_kind == TypeMultiplicity::NAMED_PACK ? constructor.GetKwargs() : constructor.GetArgs();
+		if (variadic && variadic->GetTypeName().IsBuiltinType(LogicalTypeId::TYPE)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+//! Check how a type name uses the variables of the signature, at any depth, and count the uses of the packs in
+//! "uses". A pack has exactly one expansion above it. An expansion is the only argument of the type name that takes
+//! it - until a type name can take one after other arguments, or one of each kind - and a built-in type has to take
+//! any number of types the way the expansion gives them. It expands the pack by itself there: a pattern is matched
+//! once for every argument of a variadic parameter, not for every part of a type
+static void VerifyTypeName(const FunctionSignature &signature, const TypeName &type, identifier_map_t<idx_t> &uses) {
+	if (!type.HasArguments()) {
+		auto variable =
+		    type.GetBuiltinType() == LogicalTypeId::INVALID ? signature.FindVariable(type.GetName()) : nullptr;
+		if (variable && variable->IsPack()) {
+			throw InvalidInputException("Pack '%s' is used as '%s': a pack is written with its stars where it is used",
+			                            variable->ToString(), type.ToString());
+		}
+		return;
+	}
+	auto &arguments = type.GetArguments();
+	for (auto &argument : arguments) {
+		if (!argument.IsType()) {
+			continue;
+		}
+		auto &use = argument.GetType();
+		if (!use.IsExpansion()) {
+			VerifyTypeName(signature, use, uses);
+			continue;
+		}
+		auto &pack = VerifyExpansion(signature, use);
+		uses[pack.GetName()]++;
+		if (use.GetPattern().HasArguments()) {
+			throw InvalidInputException("'%s' expands a pattern in '%s': a pattern is only expanded as the type of a "
+			                            "variadic parameter, a type takes a pack by itself, as '%s'",
+			                            use.ToString(), type.ToString(), pack.ToString());
+		}
+		if (arguments.size() != 1 || !argument.GetLabel().empty()) {
+			throw InvalidInputException("Pack '%s' has to be the only argument of '%s', without a label",
+			                            use.ToString(), type.ToString());
+		}
+		auto constructors = DefaultTypeGenerator::GetDefaultConstructorSignatures(type.GetName());
+		if (!constructors.empty() && !TakesPack(constructors, use.GetExpansionKind())) {
+			throw InvalidInputException("Type %s does not take the types of a pack '%s'",
+			                            type.GetName().GetIdentifierName(), use.ToString());
+		}
+	}
+}
+
+void FunctionSignature::VerifyVariableUses() const {
+	identifier_map_t<idx_t> uses;
+	for (const auto &param : parameters) {
+		auto &type = param.GetTypeName();
+		if (!type.IsExpansion()) {
+			VerifyTypeName(*this, type, uses);
+			continue;
+		}
+		// an expansion by itself is what a variadic parameter of its kind receives: every argument is passed as the
+		// pattern, which is the pack itself or a type that uses it
+		auto &pack = VerifyExpansion(*this, type);
+		const bool is_named = type.GetExpansionKind() == TypeMultiplicity::NAMED_PACK;
+		const auto variadic = is_named ? FunctionParameterKind::VAR_KEYWORD : FunctionParameterKind::VAR_POSITIONAL;
+		if (param.GetKind() != variadic) {
+			throw InvalidInputException("Parameter '%s' is not a type: a pack '%s' is the type of a '%s' parameter, "
+			                            "or an argument of a type",
+			                            param.ToString(), type.ToString(), is_named ? "**kwargs" : "*args");
+		}
+		uses[pack.GetName()]++;
+	}
+	// one argument says what a pack is - until the elements several arguments say are unified
+	for (auto &variable : variables) {
+		auto entry = uses.find(variable.GetName());
+		if (entry != uses.end() && entry->second > 1) {
+			throw InvalidInputException("Pack '%s' is used by the parameters more than once", variable.ToString());
+		}
+	}
+	if (return_type.IsType()) {
+		auto &type = return_type.GetTypeName();
+		if (type.IsExpansion()) {
+			VerifyExpansion(*this, type);
+			throw InvalidInputException("The return type '%s' is not a type: a pack is an argument of a type",
+			                            type.ToString());
+		}
+		VerifyTypeName(*this, type, uses);
+	}
+	for (auto &variable : variables) {
+		if (variable.IsPack() && uses.find(variable.GetName()) == uses.end()) {
+			throw InvalidInputException("Pack '%s' is declared but not used", variable.ToString());
+		}
+	}
+}
+
 void FunctionSignature::Verify() const {
 	// Check for duplicate parameter names
 	identifier_set_t seen_names;
@@ -589,6 +788,9 @@ void FunctionSignature::Verify() const {
 		}
 		seen_names.insert(param.GetName());
 	}
+
+	// Every use of a variable is written as the variable is declared, and a pack is used where one can be
+	VerifyVariableUses();
 
 	// ANY is the type of the argument itself, which a type variable that the other arguments determine is not
 	for (const auto &param : parameters) {

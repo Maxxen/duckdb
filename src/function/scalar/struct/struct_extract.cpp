@@ -26,7 +26,7 @@ static void StructExtractFunction(DataChunk &args, ExpressionState &state, Vecto
 	result.Verify();
 }
 
-enum class StructExtractKey : uint8_t { NAME, INDEX, INDEX_AT };
+enum class StructExtractKey : uint8_t { NAME, INDEX };
 
 //! Looks up the entry with the given name, returns its index and sets the type of the entry
 static idx_t ResolveStructEntryByName(const LogicalType &struct_type, const string &key_str, LogicalType &entry_type) {
@@ -71,14 +71,6 @@ static LogicalType StructExtractReturnType(const ResolveReturnTypeInput &input) 
 	}
 	if (StructType::GetChildTypes(child_type).empty()) {
 		throw BinderException("Can't extract something from an empty struct");
-	}
-	if (KEY == StructExtractKey::NAME && child_type.id() == LogicalTypeId::TUPLE) {
-		throw BinderException(
-		    "struct_extract with a string key cannot be used on an unnamed struct, use a numeric index instead");
-	}
-	if (KEY == StructExtractKey::INDEX && child_type.id() != LogicalTypeId::TUPLE) {
-		throw BinderException(
-		    "struct_extract with an integer key can only be used on unnamed structs, use a string key instead");
 	}
 	// the type is resolved here, so that it is also known (and the key is validated) for NULL structs
 	auto key_val = input.TryGetConstant(1);
@@ -128,11 +120,21 @@ unique_ptr<FunctionData> StructExtractAtFun::GetBindData(idx_t index) {
 	return make_uniq<StructExtractBindData>(index);
 }
 
+//! A struct with names: its fields are the pack KV
+static TypeName NamedStructPattern() {
+	return TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")});
+}
+
+//! A tuple: its types are the pack T
+static TypeName TuplePattern() {
+	return TypeName::TUPLE({TypeName::PACK("T")});
+}
+
 ScalarFunction GetKeyExtractFunction() {
 	ScalarFunction fun("struct_extract",
 	                   FunctionSignature()
-	                       .AddVariable("T", LogicalTypeId::STRUCT)
-	                       .AddParameter("struct", TypeName::VARIABLE("T"))
+	                       .AddNamedPack("KV")
+	                       .AddParameter("struct", NamedStructPattern())
 	                       .AddParameter("entry", LogicalType::VARCHAR)
 	                       .SetReturnType(ReturnType::ANY(StructExtractReturnType<StructExtractKey::NAME>)),
 	                   StructExtractFunction, StructExtractBind, PropagateStructExtractStats);
@@ -142,23 +144,33 @@ ScalarFunction GetKeyExtractFunction() {
 ScalarFunction GetIndexExtractFunction() {
 	ScalarFunction fun("struct_extract",
 	                   FunctionSignature()
-	                       .AddVariable("T", LogicalTypeId::TUPLE)
-	                       .AddParameter("tuple", TypeName::VARIABLE("T"))
+	                       .AddPack("T")
+	                       .AddParameter("tuple", TuplePattern())
 	                       .AddParameter("index", LogicalType::BIGINT)
 	                       .SetReturnType(ReturnType::ANY(StructExtractReturnType<StructExtractKey::INDEX>)),
 	                   StructExtractFunction, StructExtractBindIndex, PropagateStructExtractStats);
 	return fun;
 }
 
-ScalarFunction GetExtractAtFunction() {
+//! struct_extract_at takes a struct with names and a tuple: an overload for each, as neither is passed as the other
+static ScalarFunction GetExtractAtFunction(FunctionSignature signature) {
 	ScalarFunction fun("struct_extract_at",
-	                   FunctionSignature()
-	                       .AddVariable("T", LogicalTypeId::STRUCT)
-	                       .AddParameter("struct", TypeName::VARIABLE("T"))
-	                       .AddParameter("index", LogicalType::BIGINT)
-	                       .SetReturnType(ReturnType::ANY(StructExtractReturnType<StructExtractKey::INDEX_AT>)),
+	                   signature.AddParameter("index", LogicalType::BIGINT)
+	                       .SetReturnType(ReturnType::ANY(StructExtractReturnType<StructExtractKey::INDEX>)),
 	                   StructExtractFunction, StructExtractBindIndex, PropagateStructExtractStats);
 	return fun;
+}
+
+static ScalarFunction GetNamedExtractAtFunction() {
+	return GetExtractAtFunction(FunctionSignature().AddNamedPack("KV").AddParameter("struct", NamedStructPattern()));
+}
+
+static ScalarFunction GetTupleExtractAtFunction() {
+	return GetExtractAtFunction(FunctionSignature().AddPack("T").AddParameter("struct", TuplePattern()));
+}
+
+ScalarFunction GetExtractAtFunction(const LogicalType &struct_type) {
+	return struct_type.id() == LogicalTypeId::TUPLE ? GetTupleExtractAtFunction() : GetNamedExtractAtFunction();
 }
 
 ScalarFunctionSet StructExtractFun::GetFunctions() {
@@ -169,8 +181,11 @@ ScalarFunctionSet StructExtractFun::GetFunctions() {
 	return struct_extract_set;
 }
 
-ScalarFunction StructExtractAtFun::GetFunction() {
-	return GetExtractAtFunction();
+ScalarFunctionSet StructExtractAtFun::GetFunctions() {
+	ScalarFunctionSet struct_extract_at_set("struct_extract_at");
+	struct_extract_at_set.AddFunction(GetNamedExtractAtFunction());
+	struct_extract_at_set.AddFunction(GetTupleExtractAtFunction());
+	return struct_extract_at_set;
 }
 
 } // namespace duckdb

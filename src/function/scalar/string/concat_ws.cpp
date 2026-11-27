@@ -171,7 +171,8 @@ ScalarFunction ConcatWsFun::GetFunction() {
 	                             .AddVariable("T")
 	                             .AddParameter("separator", LogicalType::VARCHAR)
 	                             .AddParameter("string", TypeName::VARIABLE("T"))
-	                             .AddArgs("args", LogicalType::ANY)
+	                             .AddPack("A")
+	                             .AddArgs("args", TypeName::PACK("A"))
 	                             .SetReturnType(LogicalType::VARCHAR),
 	                         ConcatWSFunction, BindConcatWSFunction);
 	concat_ws.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

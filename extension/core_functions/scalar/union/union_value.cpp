@@ -34,14 +34,12 @@ void UnionValueFunction(DataChunk &args, ExpressionState &state, Vector &result)
 	ConstantVector::GetData<union_tag_t>(tag_vector)[0] = 0;
 }
 
-//! The union whose only member is the named argument
-LogicalType UnionValueReturnType(const ResolveReturnTypeInput &input) {
-	if (input.GetArgumentCount() != 1) {
+//! A union value has one member: the named argument
+unique_ptr<FunctionData> UnionValueBind(BindScalarFunctionInput &input) {
+	if (input.GetArguments().size() != 1) {
 		throw BinderException("union_value takes exactly one argument");
 	}
-	child_list_t<LogicalType> union_members;
-	union_members.emplace_back(make_pair(input.GetArgumentName(0), input.GetArgumentType(0)));
-	return LogicalType::UNION(std::move(union_members));
+	return VariableReturnBindData::Bind(input);
 }
 
 unique_ptr<ParsedExpression> UnionValueUnbind(FunctionUnbindInput &input) {
@@ -57,10 +55,12 @@ unique_ptr<ParsedExpression> UnionValueUnbind(FunctionUnbindInput &input) {
 } // namespace
 
 ScalarFunction UnionValueFun::GetFunction() {
-	ScalarFunction fun(
-	    "union_value",
-	    FunctionSignature().AddKwargs("kwargs", LogicalType::ANY).SetReturnType(ReturnType::ANY(UnionValueReturnType)),
-	    UnionValueFunction, VariableReturnBindData::Bind);
+	ScalarFunction fun("union_value",
+	                   FunctionSignature()
+	                       .AddNamedPack("KV")
+	                       .AddKwargs("kwargs", TypeName::NAMED_PACK("KV"))
+	                       .SetReturnType(TypeName(Identifier("UNION"), {TypeName::NAMED_PACK("KV")})),
+	                   UnionValueFunction, UnionValueBind);
 	fun.GetProperties().SetRequiresExpressionNames(true);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetSerializeCallback(VariableReturnBindData::Serialize);

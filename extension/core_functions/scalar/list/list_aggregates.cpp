@@ -586,7 +586,8 @@ ScalarFunction ListAggregateFun::GetFunction() {
 	                                 .AddVariable("T")
 	                                 .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
 	                                 .AddParameter("function_name", LogicalType::VARCHAR)
-	                                 .AddArgs("args", LogicalType::ANY)
+	                                 .AddPack("A")
+	                                 .AddArgs("args", TypeName::PACK("A"))
 	                                 .SetReturnType(ReturnType::ANY(ListAggregateReturnType)),
 	                             ListAggregateFunction, ListAggregateBind, nullptr, ListAggregatesInitLocalState);
 	result.SetFallible();

@@ -551,6 +551,19 @@ LogicalType DefaultTypeGenerator::TryDefaultBind(const string &name, const vecto
 	return GetConstructors(*entry, Identifier(name)).Bind(nullptr, LogicalType(entry->type), args);
 }
 
+vector<FunctionSignature> DefaultTypeGenerator::GetDefaultConstructorSignatures(const Identifier &name) {
+	vector<FunctionSignature> result;
+	auto entry = TryGetDefaultTypeEntry(name);
+	if (!entry) {
+		return result;
+	}
+	auto constructors = GetConstructors(*entry, name);
+	for (idx_t i = 0; i < constructors.GetOverloadCount(); i++) {
+		result.push_back(constructors.GetOverload(i).GetSignature());
+	}
+	return result;
+}
+
 DefaultTypeGenerator::DefaultTypeGenerator(Catalog &catalog, SchemaCatalogEntry &schema)
     : DefaultGenerator(catalog), schema(schema) {
 }

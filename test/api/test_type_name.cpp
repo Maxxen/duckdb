@@ -29,6 +29,92 @@ TEST_CASE("Type names compare, hash and print", "[api][type_name]") {
 	REQUIRE(TypeName(LogicalType::STRUCT({{"a", LogicalType::INTEGER}})).ToString() == "STRUCT(a INTEGER)");
 }
 
+TEST_CASE("The expansion of a pack is a node of its own that wraps a pattern", "[api][type_name]") {
+	const auto pack = TypeName::PACK("T");
+	const auto named_pack = TypeName::NAMED_PACK("KV");
+	const auto variable = TypeName::VARIABLE("T");
+	// a name is a type name or an expansion
+	REQUIRE(pack.IsExpansion());
+	REQUIRE(named_pack.IsExpansion());
+	REQUIRE(!variable.IsExpansion());
+	REQUIRE(!TypeName(LogicalType::INTEGER).IsExpansion());
+	REQUIRE(!TypeName::LIST(pack).IsExpansion());
+	REQUIRE(pack.GetExpansionKind() == TypeMultiplicity::POSITIONAL_PACK);
+	REQUIRE(named_pack.GetExpansionKind() == TypeMultiplicity::NAMED_PACK);
+	// the pack is referenced by its name inside the expansion: "*T" expands the pattern T
+	REQUIRE(pack.GetPattern() == variable);
+	REQUIRE(named_pack.GetPattern() == TypeName::VARIABLE("KV"));
+	REQUIRE(pack == TypeName::EXPAND(variable));
+	REQUIRE(named_pack == TypeName::EXPAND_NAMED(TypeName::VARIABLE("KV")));
+
+	// an expansion is not a type name: it has no name and no arguments, and it is not a built-in type
+	REQUIRE_THROWS_WITH(pack.GetName(), Catch::Contains("An expansion is not a type name"));
+	REQUIRE_THROWS_WITH(pack.GetArguments(), Catch::Contains("An expansion is not a type name"));
+	REQUIRE_THROWS_WITH(pack.HasArguments(), Catch::Contains("An expansion is not a type name"));
+	REQUIRE(pack.GetBuiltinType() == LogicalTypeId::INVALID);
+	REQUIRE(!pack.IsBuiltinType(LogicalTypeId::INTEGER));
+	REQUIRE(!TypeName::EXPAND(LogicalType::INTEGER).IsBuiltinType(LogicalTypeId::INTEGER));
+	// and a type name has no pattern
+	REQUIRE_THROWS_WITH(variable.GetPattern(), Catch::Contains("Type name 'T' is not an expansion"));
+	REQUIRE_THROWS_WITH(variable.GetExpansionKind(), Catch::Contains("Type name 'T' is not an expansion"));
+
+	// an expansion is written with its stars
+	REQUIRE(pack.ToString() == "*T");
+	REQUIRE(named_pack.ToString() == "**KV");
+	REQUIRE(variable.ToString() == "T");
+	const auto tuple = TypeName::TUPLE({pack});
+	const TypeName structure(Identifier("STRUCT"), {named_pack});
+	REQUIRE(tuple.ToString() == "TUPLE(*T)");
+	REQUIRE(structure.ToString() == "STRUCT(**KV)");
+	// at any depth, and next to what prints as before
+	REQUIRE(TypeName::LIST(tuple).ToString() == "TUPLE(*T)[]");
+	REQUIRE(TypeName::MAP(TypeName::VARIABLE("U"), structure).ToString() == "MAP(U, STRUCT(**KV))");
+	REQUIRE(TypeName::TUPLE({variable}).ToString() == "TUPLE(T)");
+	// around the pattern, if that is not a name by itself
+	const auto lists = TypeName::EXPAND(TypeName::LIST(variable));
+	REQUIRE(lists.ToString() == "*(T[])");
+	REQUIRE(TypeName::EXPAND_NAMED(TypeName::LIST(TypeName::VARIABLE("KV"))).ToString() == "**(KV[])");
+	REQUIRE(TypeName::EXPAND(TypeName::MAP(LogicalType::VARCHAR, variable)).ToString() == "*(MAP(VARCHAR, T))");
+	REQUIRE(TypeName::EXPAND(pack).ToString() == "*(*T)");
+	// which is another thing than a list of the expansion
+	REQUIRE(TypeName::LIST(pack).ToString() == "(*T)[]");
+	REQUIRE(TypeName::ARRAY(pack, 3).ToString() == "(*T)[3]");
+	REQUIRE(TypeName::TUPLE({lists}).ToString() == "TUPLE(*(T[]))");
+
+	// identity: T, *T and **T are three things
+	REQUIRE(pack == TypeName::PACK("T"));
+	REQUIRE(pack.Hash() == TypeName::PACK("T").Hash());
+	REQUIRE(pack != variable);
+	REQUIRE(pack.Hash() != variable.Hash());
+	REQUIRE(pack != TypeName::NAMED_PACK("T"));
+	REQUIRE(pack.Hash() != TypeName::NAMED_PACK("T").Hash());
+	REQUIRE(pack != TypeName::PACK("U"));
+	REQUIRE(tuple == TypeName::TUPLE({TypeName::PACK("T")}));
+	REQUIRE(tuple != TypeName::TUPLE({variable}));
+	REQUIRE(tuple.Hash() != TypeName::TUPLE({variable}).Hash());
+	REQUIRE(tuple != TypeName::TUPLE({TypeName::NAMED_PACK("T")}));
+	REQUIRE(tuple.Hash() != TypeName::TUPLE({TypeName::NAMED_PACK("T")}).Hash());
+	// and so are "*(T[])", "(*T)[]" and "T[]"
+	REQUIRE(lists == TypeName::EXPAND(TypeName::LIST(TypeName::VARIABLE("T"))));
+	REQUIRE(lists.Hash() == TypeName::EXPAND(TypeName::LIST(TypeName::VARIABLE("T"))).Hash());
+	REQUIRE(lists != TypeName::LIST(pack));
+	REQUIRE(lists.Hash() != TypeName::LIST(pack).Hash());
+	REQUIRE(lists != TypeName::LIST(variable));
+	REQUIRE(lists.Hash() != TypeName::LIST(variable).Hash());
+	REQUIRE(lists != TypeName::EXPAND_NAMED(TypeName::LIST(variable)));
+	REQUIRE(lists != TypeName::EXPAND(TypeName::LIST(TypeName::VARIABLE("U"))));
+	// the name of a variable is unchanged by it
+	REQUIRE(variable == TypeName(Identifier("T")));
+	REQUIRE(variable.Hash() == TypeName(Identifier("T")).Hash());
+	// what a name contains is looked for in the pattern of an expansion too
+	REQUIRE(tuple.Contains("T"));
+	REQUIRE(pack.Contains("T"));
+	REQUIRE(lists.Contains("T"));
+	REQUIRE(lists.Contains("LIST"));
+	REQUIRE(!lists.Contains("U"));
+	REQUIRE(TypeName::TUPLE({lists}).Contains("T"));
+}
+
 TEST_CASE("A type binds by its name to itself", "[api][type_name]") {
 	DuckDB db(nullptr);
 	Connection con(db);
@@ -79,6 +165,9 @@ TEST_CASE("Every type a registered function declares binds", "[api][type_name]")
 	// a name that uses a variable of the signature is not a type until a call determines the variable
 	std::function<bool(const FunctionSignature &, const TypeName &)> uses_variable;
 	uses_variable = [&](const FunctionSignature &signature, const TypeName &name) {
+		if (name.IsExpansion()) {
+			return uses_variable(signature, name.GetPattern());
+		}
 		if (!name.HasArguments()) {
 			return signature.FindVariable(name.GetName()) != nullptr;
 		}

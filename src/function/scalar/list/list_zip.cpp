@@ -162,17 +162,17 @@ static LogicalType GetListZipType(const ResolveReturnTypeInput &input, idx_t lis
 }
 
 //! The lists, followed by the truncate flag
-static LogicalType ListZipReturnType(const ResolveReturnTypeInput &input) {
-	D_ASSERT(input.GetArgumentCount() >= 2);
-	return GetListZipType(input, input.GetArgumentCount() - 1);
+static unique_ptr<FunctionData> ListZipBind(BindScalarFunctionInput &input) {
+	if (input.GetArguments().size() < 2) {
+		throw BinderException("Provide at least one argument to " +
+		                      input.GetBoundFunction().GetName().GetIdentifierName());
+	}
+	return VariableReturnBindData::Bind(input);
 }
 
 //! Deprecated: the lists, optionally followed by a truncate flag that is passed by position
 static LogicalType ListZipPositionalFlagReturnType(const ResolveReturnTypeInput &input) {
 	idx_t size = input.GetArgumentCount();
-	if (size == 0) {
-		throw BinderException("Provide at least one argument to " + input.GetFunctionName());
-	}
 	if (input.GetArgumentType(size - 1).id() == LogicalTypeId::BOOLEAN) {
 		size--;
 	}
@@ -201,19 +201,24 @@ static unique_ptr<FunctionData> ListZipPositionalFlagBind(BindScalarFunctionInpu
 
 ScalarFunctionSet ListZipFun::GetFunctions() {
 	ScalarFunctionSet set("list_zip");
-	// one or more lists are zipped, truncated to the shortest one if the flag is set
+	// the lists, each of its own type, are zipped to a list of tuples - truncated to the shortest one if the flag is
+	// set
+	const auto tuple_type = TypeName::TUPLE({TypeName::PACK("T")});
 	ScalarFunction fun(FunctionSignature()
-	                       .AddPositionalOnly("list", LogicalType::LIST(LogicalType::ANY))
-	                       .AddArgs("lists", LogicalType::LIST(LogicalType::ANY))
+	                       .AddPack("T")
+	                       .AddArgs("lists", TypeName::EXPAND(TypeName::LIST(TypeName::VARIABLE("T"))))
 	                       .AddKeywordOnly("truncate", LogicalType::BOOLEAN, Value::BOOLEAN(false))
-	                       .SetReturnType(ReturnType::ANY(ListZipReturnType)),
-	                   ListZipFunction, VariableReturnBindData::Bind);
+	                       .SetReturnType(TypeName::LIST(tuple_type)),
+	                   ListZipFunction, ListZipBind);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	set.AddFunction(fun);
 
 	// deprecated: the truncate flag is the last positional argument
 	ScalarFunction positional_flag_fun(FunctionSignature()
-	                                       .AddArgs("args", LogicalType::ANY)
+	                                       .AddVariable("A")
+	                                       .AddPack("T")
+	                                       .AddPositionalOnly("arg", TypeName::VARIABLE("A"))
+	                                       .AddArgs("args", TypeName::PACK("T"))
 	                                       .SetReturnType(ReturnType::ANY(ListZipPositionalFlagReturnType)),
 	                                   ListZipFunction, ListZipPositionalFlagBind);
 	positional_flag_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

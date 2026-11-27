@@ -35,13 +35,13 @@ static int64_t TargetTypeCost(LogicalTypeId type) {
 	case LogicalTypeId::VARCHAR:
 		return 149;
 	case LogicalTypeId::STRUCT:
-	case LogicalTypeId::TUPLE:
 	case LogicalTypeId::LIST:
 	case LogicalTypeId::UNION:
 		return 160;
 	case LogicalTypeId::ARRAY:
 	case LogicalTypeId::MAP:
-		// an untyped value is a list rather than an array or a map
+	case LogicalTypeId::TUPLE:
+		// an untyped value is a list rather than an array or a map, and a struct rather than a tuple
 		return 161;
 	case LogicalTypeId::ANY:
 		return 5;
@@ -538,9 +538,12 @@ int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) 
 		}
 	}
 	if (StructType::IsStruct(from) && StructType::IsStruct(to)) {
+		// a struct with names passed as a tuple, or the reverse, is a conversion: it costs more than the same struct
+		// passed as its own kind
+		const int64_t kind_cost = from.id() == to.id() ? 0 : 1;
 		if (!to.HasParameters()) {
 			// If this struct is not fully resolved, we'll leave it to the actual cast logic to handle it.
-			return 0;
+			return kind_cost;
 		}
 
 		auto &source_children = StructType::GetChildTypes(from);
@@ -553,7 +556,7 @@ int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) 
 
 		if (source_children.empty()) {
 			// both are empty - empty STRUCT and empty TUPLE are trivially inter-castable
-			return 0;
+			return kind_cost;
 		}
 
 		auto target_is_unnamed = StructType::IsUnnamed(to);
@@ -601,7 +604,7 @@ int64_t CastRules::ImplicitCast(const LogicalType &from, const LogicalType &to) 
 				cost = MaxValue(cost, child_cost);
 			}
 		}
-		return cost;
+		return cost + kind_cost;
 	}
 
 	if (from.id() == to.id()) {

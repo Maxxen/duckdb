@@ -58,11 +58,11 @@ SELECT current_schemas('false');
 ----
 []
 
-# argument types are verified before they are cast
+# a tuple is not a struct with names: only the overload with an index takes it, which casts the key
 statement error
 SELECT struct_extract(row(1, 2), 'a');
 ----
-struct_extract with a string key cannot be used on an unnamed struct
+Could not convert string 'a' to INT64
 
 query I
 SELECT SWITCH(2, MAP {1: 'a', 2: 'b'}, 'c');

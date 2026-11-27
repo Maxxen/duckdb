@@ -265,5 +265,5 @@ SELECT struct_position(ROW(1.0::FLOAT, 2.0::DOUBLE), 1.0::FLOAT), struct_positio
 statement error
 SELECT struct_position({'a': 1, 'b': 2}, 2);
 ----
-<REGEX>:Binder Error.*"struct_position" can only be used on unnamed structs.*
+<REGEX>:Binder Error.*Argument 1 of type STRUCT\(a INTEGER, b INTEGER\) cannot be implicitly cast to TUPLE\(\*T\).*
 

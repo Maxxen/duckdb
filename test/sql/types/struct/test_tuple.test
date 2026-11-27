@@ -86,17 +86,17 @@ SELECT struct_extract(row(1, 'a'), 1), struct_extract(row(1, 'a'), 2);
 ----
 1	a
 
-# name-based extraction does NOT work on a TUPLE
+# name-based extraction does NOT work on a TUPLE: the key is taken for an index
 statement error
 SELECT struct_extract(row(1, 'a'), 'x');
 ----
-<REGEX>:.*unnamed struct.*
+<REGEX>:.*Could not convert string 'x' to INT64.*
 
 # struct_keys errors on a TUPLE (it requires a named STRUCT)
 statement error
 SELECT struct_keys(row(1, 'a'));
 ----
-<REGEX>:.*expects a STRUCT argument.*
+<REGEX>:.*Argument 1 of type TUPLE\(INTEGER, VARCHAR\) cannot be implicitly cast to STRUCT\(\*\*KV\).*
 
 # implicit positional cast TUPLE -> named STRUCT
 query T

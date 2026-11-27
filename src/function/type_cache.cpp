@@ -9,8 +9,40 @@
 
 namespace duckdb {
 
-//! Whether two arguments of a type constructor are the same: a type compares as a type with its collations, not as
-//! a value
+//! Whether two types that compare as equal also spell the names of their parts the same way. Names compare without
+//! their case, but a constructed type has the names it is given: STRUCT(a INTEGER) is not STRUCT("A" INTEGER) here
+static bool HasSameNames(const LogicalType &left, const LogicalType &right) {
+	if (!left.HasParameters() || !right.HasParameters()) {
+		return true;
+	}
+	switch (left.id()) {
+	case LogicalTypeId::STRUCT:
+	case LogicalTypeId::TUPLE:
+	case LogicalTypeId::UNION: {
+		auto &left_children = StructType::GetChildTypes(left);
+		auto &right_children = StructType::GetChildTypes(right);
+		for (idx_t i = 0; i < left_children.size(); i++) {
+			if (left_children[i].first.GetIdentifierName() != right_children[i].first.GetIdentifierName() ||
+			    !HasSameNames(left_children[i].second, right_children[i].second)) {
+				return false;
+			}
+		}
+		return true;
+	}
+	case LogicalTypeId::LIST:
+		return HasSameNames(ListType::GetChildType(left), ListType::GetChildType(right));
+	case LogicalTypeId::ARRAY:
+		return HasSameNames(ArrayType::GetChildType(left), ArrayType::GetChildType(right));
+	case LogicalTypeId::MAP:
+		return HasSameNames(MapType::KeyType(left), MapType::KeyType(right)) &&
+		       HasSameNames(MapType::ValueType(left), MapType::ValueType(right));
+	default:
+		return true;
+	}
+}
+
+//! Whether two arguments of a type constructor are the same: a type compares as a type with its collations and the
+//! names of its parts as they are written, not as a value
 static bool IsSameArgument(const TypeArgument &left, const TypeArgument &right) {
 	auto &left_value = left.GetValue();
 	auto &right_value = right.GetValue();
@@ -22,7 +54,9 @@ static bool IsSameArgument(const TypeArgument &left, const TypeArgument &right) 
 		return true;
 	}
 	if (left_value.type().id() == LogicalTypeId::TYPE) {
-		return TypeValue::GetType(left_value).EqualsIncludingCollation(TypeValue::GetType(right_value));
+		auto left_type = TypeValue::GetType(left_value);
+		auto right_type = TypeValue::GetType(right_value);
+		return left_type.EqualsIncludingCollation(right_type) && HasSameNames(left_type, right_type);
 	}
 	return Value::NotDistinctFrom(left_value, right_value);
 }

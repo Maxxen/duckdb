@@ -10,7 +10,8 @@ ScalarFunction HashFun::GetFunction() {
 	auto hash_fun = ScalarFunction(FunctionSignature()
 	                                   .AddVariable("T")
 	                                   .AddParameter("value", TypeName::VARIABLE("T"))
-	                                   .AddArgs("args", LogicalType::ANY)
+	                                   .AddPack("A")
+	                                   .AddArgs("args", TypeName::PACK("A"))
 	                                   .SetReturnType(LogicalType::HASH),
 	                               HashFunction);
 	hash_fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

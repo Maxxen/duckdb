@@ -14,7 +14,7 @@
 #include "duckdb/common/types/time.hpp"
 #include "duckdb/common/vector/vector_iterator.hpp"
 #include "duckdb/common/vector/vector_writer.hpp"
-#include "duckdb/function/scalar/struct_functions.hpp"
+#include "duckdb/function/scalar/nested_functions.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
@@ -62,7 +62,7 @@ unique_ptr<Expression> CreateInt96AsStructChildExpression(ClientContext &context
 	args.push_back(CreateInt96AsStructExpression(context));
 	args.push_back(
 	    make_uniq_base<Expression, BoundConstantExpression>(Value::BIGINT(NumericCast<int64_t>(child_index + 1))));
-	return StructExtractAtFun::GetFunction().Bind(context, std::move(args));
+	return GetExtractAtFunction(Int96StructType()).Bind(context, std::move(args));
 }
 
 } // namespace duckdb

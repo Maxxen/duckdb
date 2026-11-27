@@ -128,7 +128,7 @@ SELECT struct_extract({'a': a}, a) FROM (SELECT a::VARCHAR AS a FROM range(10) t
 statement error
 SELECT struct_extract({'a': 42}, 42)
 ----
-<REGEX>:.*Binder Error.*can only be used on unnamed structs.*
+<REGEX>:.*Binder Error.*Argument 1 of type STRUCT\(a INTEGER\) cannot be implicitly cast to TUPLE\(\*T\).*
 
 query I
 SELECT struct_extract_at({'a': 42}, 1)

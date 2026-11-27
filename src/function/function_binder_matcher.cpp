@@ -14,7 +14,10 @@
 namespace duckdb {
 
 //! Whether a type is of the given kind. A struct with and without names are of one kind, and so are a list and an
-//! array: which of the two a function takes is its to check, or up to the cast rules. A NULL is of every kind
+//! array: which of the two a function takes is up to the cast rules. A NULL is of every kind. The parts of a struct
+//! and of a tuple are paired by position where a type names them (TUPLE(K, V) passed a struct with two fields); a
+//! pack is only made of the parameters of a type of the very kind of its name, or of one that has none, see
+//! CollectBindings
 static bool IsOfKind(const LogicalType &type, LogicalTypeId kind) {
 	const bool takes_struct = kind == LogicalTypeId::STRUCT || kind == LogicalTypeId::TUPLE;
 	const bool is_struct = type.id() == LogicalTypeId::STRUCT || type.id() == LogicalTypeId::TUPLE;
@@ -65,9 +68,10 @@ static bool IsUntyped(const LogicalType &type) {
 	return type.id() == LogicalTypeId::SQLNULL || type.id() == LogicalTypeId::UNKNOWN;
 }
 
-//! The variable of the signature a type name is, if it is one: no variable is named like a built-in type
+//! The variable of the signature a type name is, if it is one: no variable is named like a built-in type, and the
+//! expansion of a pack is not the pack
 static optional_ptr<const TypeVariable> FindVariable(const FunctionSignature &signature, const TypeName &name) {
-	if (name.HasArguments() || name.GetBuiltinType() != LogicalTypeId::INVALID) {
+	if (name.IsExpansion() || name.HasArguments() || name.GetBuiltinType() != LogicalTypeId::INVALID) {
 		return nullptr;
 	}
 	return signature.FindVariable(name.GetName());
@@ -78,6 +82,31 @@ static optional_ptr<const TypeVariable> FindValueVariable(const FunctionSignatur
                                                           const TypeNameArgument &argument) {
 	auto variable = argument.IsType() ? FindVariable(signature, argument.GetType()) : nullptr;
 	return variable && variable->IsValue() ? variable : nullptr;
+}
+
+//! The pack of the signature an expansion expands: the one pack its pattern uses, see FunctionSignature::Verify -
+//! the pack itself for "*T" and "**KV", the T of "*(T[])"
+static const TypeVariable &GetExpandedPack(const FunctionSignature &signature, const TypeName &expansion) {
+	for (auto &variable : signature.GetVariables()) {
+		if (variable.IsPack() && expansion.GetPattern().Contains(variable.GetName())) {
+			return variable;
+		}
+	}
+	throw InternalException("'%s' expands no pack of the signature", expansion.ToString());
+}
+
+//! The pack of the signature an argument of a type name expands, if it is an expansion: its elements take the place
+//! of the argument. Only a pack by itself is expanded there: a pattern is expanded as the type of a variadic
+//! parameter, see FunctionSignature::Verify
+static optional_ptr<const TypeVariable> FindPack(const FunctionSignature &signature, const TypeNameArgument &argument) {
+	if (!argument.IsType() || !argument.GetType().IsExpansion()) {
+		return nullptr;
+	}
+	auto pack = FindVariable(signature, argument.GetType().GetPattern());
+	if (!pack || !pack->IsPack()) {
+		throw InternalException("'%s' is not the expansion of a pack by itself", argument.GetType().ToString());
+	}
+	return pack;
 }
 
 //! The type of the values a value variable stands for
@@ -166,8 +195,12 @@ static optional<LogicalType> PairType(const TypeName &name, LogicalTypeId kind, 
 //! the type of a parameter, "instance" is the type of the argument that is passed to it - invalid for a part of the
 //! name the argument has no type in the place of. A variable that "variables" does not say is what the one argument
 //! says it is, see GetVariableType: ANY, which is a type variable of its own for every argument, and every variable
-//! when it is the pattern of a parameter that is filled with the parts of an argument, see GetPassCost. Without an
-//! argument ANY is a type. Returns nothing if a variable is not determined
+//! when it is the pattern of a parameter that is filled with the parts of an argument, see GetPassCost. The elements
+//! of a pack take the place of the expansion that is an argument of the name, with their labels if it is a named
+//! pack: TUPLE(*T) is the tuple of the types of T, STRUCT(**KV) the struct of the fields of KV. The name itself is
+//! not an expansion: for a variadic parameter that is one it is the pattern, in which the pack is what the one
+//! argument says it is - its element of the pack, see Collect. Without an argument ANY is a type. Returns nothing if
+//! a variable is not determined
 static optional<LogicalType> BindTypeNameInternal(TypeCache &cache, const TypeName &name,
                                                   const FunctionSignature &signature,
                                                   const FunctionVariables &variables,
@@ -205,11 +238,37 @@ static optional<LogicalType> BindTypeNameInternal(TypeCache &cache, const TypeNa
 	// Whether the argument is what the name stands for already: of its kind, with every parameter what the name says
 	// it is. It is then passed as it is - a type cannot always be constructed again from its parameters, e.g. a
 	// geometry of a coordinate system that is not known here
-	bool is_instance =
-	    paired && paired->id() == kind && paired->GetAlias().empty() && paired->GetParameterCount() == arguments.size();
+	bool is_instance = paired && paired->id() == kind && paired->GetAlias().empty();
 	vector<TypeArgument> bound_arguments;
 	for (idx_t i = 0; i < arguments.size(); i++) {
 		auto &argument = arguments[i];
+		auto pack = FindPack(signature, argument);
+		if (pack) {
+			// the elements the arguments determine - else the parameters the one argument has, if it is of the kind of
+			// the name or has none: a struct with fields has none for TUPLE(*T), nor a tuple with elements for
+			// STRUCT(**KV), nor a NULL for either
+			auto entry = variables.packs.find(pack->GetName().GetIdentifierName());
+			const bool is_determined = entry != variables.packs.end();
+			optional<TypePack> parts;
+			if (paired && (paired->id() == kind || (!IsUntyped(*paired) && paired->GetParameterCount() == 0))) {
+				parts = TypePack::ParametersOf(*paired);
+			}
+			if (!is_determined && !parts) {
+				return nullopt;
+			}
+			auto &elements = is_determined ? entry->second : *parts;
+			is_instance = is_instance && parts && (!is_determined || elements == *parts);
+			if (is_instance) {
+				// the pack is the only argument of the name, see FunctionSignature::Verify
+				return paired;
+			}
+			for (idx_t element_idx = 0; element_idx < elements.Count(); element_idx++) {
+				auto label = elements.GetLabel(element_idx);
+				bound_arguments.emplace_back(label ? label->GetIdentifierName() : string(),
+				                             Value::TYPE(elements.GetType(element_idx)));
+			}
+			continue;
+		}
 		// what the argument has in the place of this one
 		optional<Value> parameter;
 		auto parameter_idx = paired ? FindTypeParameter(*paired, arguments, i) : optional_idx();
@@ -250,7 +309,7 @@ static optional<LogicalType> BindTypeNameInternal(TypeCache &cache, const TypeNa
 		              IsSameParameter(*value, *parameter);
 		bound_arguments.emplace_back(argument.GetLabel().GetIdentifierName(), std::move(*value));
 	}
-	if (is_instance) {
+	if (is_instance && paired->GetParameterCount() == bound_arguments.size()) {
 		return paired;
 	}
 
@@ -283,8 +342,17 @@ struct VariableBinding {
 	idx_t argument;
 };
 
-//! What the arguments say the variables are, in the order of the arguments
-using VariableBindings = vector<VariableBinding>;
+//! What an argument says a pack of the signature is: its elements
+struct PackBinding {
+	reference<const TypeVariable> pack;
+	TypePack elements;
+};
+
+//! What the arguments say the variables and the packs are, in the order of the arguments
+struct VariableBindings {
+	vector<VariableBinding> variables;
+	vector<PackBinding> packs;
+};
 
 //! How the arguments are passed: the type every argument the function is bound with is passed as, and how well the
 //! arguments of the call are passed (see FunctionRank)
@@ -468,12 +536,16 @@ static Result<Value, MatchFailure> GetVariableValue(const TypeVariable &variable
 	return std::move(*value);
 }
 
-//! An argument that says nothing about the type its parameter declares says nothing about the variables it uses
+//! An argument that says nothing about the type its parameter declares says nothing about the variables it uses,
+//! and has no elements for a pack
 void OverloadMatcher::AddUntypedBindings(const TypeName &name, const LogicalType &type, idx_t argument,
                                          VariableBindings &bindings) const {
+	if (name.IsExpansion()) {
+		return;
+	}
 	auto variable = FindVariable(signature, name);
 	if (variable) {
-		bindings.push_back({*variable, variable->IsValue() ? Value() : Value::TYPE(type), argument});
+		bindings.variables.push_back({*variable, variable->IsValue() ? Value() : Value::TYPE(type), argument});
 	}
 	for (auto &name_argument : name.GetArguments()) {
 		if (name_argument.IsType()) {
@@ -483,27 +555,40 @@ void OverloadMatcher::AddUntypedBindings(const TypeName &name, const LogicalType
 }
 
 //! Pair a type name with a type, part by part, and add what the type says the variables of the name are to "bindings"
-//! - whatever is paired says so, whether the type can be passed as the name is up to the cast rules. A type of
-//! another kind than the name has no parts to pair: it says nothing, see PairType
+//! - whatever is paired says so, whether the type can be passed as the name is up to the cast rules. A pack is
+//! paired with the parameters of a type of the kind of the name: TUPLE(*T) passed a tuple says that T is the types
+//! of the tuple, STRUCT(**KV) passed a struct that KV is its fields, and a struct or a tuple without parts says the
+//! pack of no elements for either. A type of another kind than the name has no parts to pair: it says nothing, see
+//! PairType
 void OverloadMatcher::CollectBindings(const TypeName &name, const LogicalType &type, idx_t argument,
                                       VariableBindings &bindings) const {
+	auto variable = FindVariable(signature, name);
 	if (IsUntyped(type)) {
 		// Nested functions propagate these types: the binder replaces a function that returns one by a NULL, or
 		// binds it again once the parameter is resolved
 		AddUntypedBindings(name, type, argument, bindings);
 		return;
 	}
-	auto variable = FindVariable(signature, name);
 	if (variable && !variable->IsValue() && GetVariableType(type, signature.GetConstraint(name.GetName()))) {
 		// a type variable is paired with a type it stands for: one of its kind, for a constrained variable
-		bindings.push_back({*variable, Value::TYPE(type), argument});
+		bindings.variables.push_back({*variable, Value::TYPE(type), argument});
 	}
 	if (!name.HasArguments()) {
 		return;
 	}
 	auto &arguments = name.GetArguments();
-	auto paired = PairType(name, DefaultTypeGenerator::GetDefaultType(name.GetName()), type);
+	const auto kind = DefaultTypeGenerator::GetDefaultType(name.GetName());
+	auto paired = PairType(name, kind, type);
 	for (idx_t i = 0; paired && i < arguments.size(); i++) {
+		auto pack = FindPack(signature, arguments[i]);
+		if (pack) {
+			// the pack is the only argument of the name: its elements are all the parameters of a type of that kind -
+			// and a type without parameters says the pack without elements, whether it is a struct or a tuple
+			if (paired->id() == kind || paired->GetParameterCount() == 0) {
+				bindings.packs.push_back({*pack, TypePack::ParametersOf(*paired)});
+			}
+			continue;
+		}
 		auto parameter_idx = FindTypeParameter(*paired, arguments, i);
 		if (!arguments[i].IsType() || !parameter_idx.IsValid()) {
 			continue;
@@ -520,13 +605,15 @@ void OverloadMatcher::CollectBindings(const TypeName &name, const LogicalType &t
 		// a value variable is the value the type has in its place
 		auto value = parameter.DefaultTryCastAs(ValueVariableType(*value_variable));
 		if (value && !value->IsNull()) {
-			bindings.push_back({*value_variable, std::move(*value), argument});
+			bindings.variables.push_back({*value_variable, std::move(*value), argument});
 		}
 	}
 }
 
-//! Collect what the arguments say the variables are: every argument is paired with the type of its parameter, and a
-//! parameter that is declared as a value variable takes the value of its argument. Returns why not: such an argument
+//! Collect what the arguments say the variables are: every argument is paired with the type of its parameter - with
+//! the pattern, for a variadic parameter that is an expansion - and a parameter that is declared as a value variable
+//! takes the value of its argument. The pack such a variadic parameter expands takes one element from every argument:
+//! what the argument says the pack is in the pattern. Returns why not: an argument that is passed as a value variable
 //! is not a constant, or not a value of the variable
 Result<VariableBindings, MatchFailure> OverloadMatcher::Collect(const ArgumentLayout &layout) const {
 	auto context = cache.GetContext();
@@ -534,7 +621,8 @@ Result<VariableBindings, MatchFailure> OverloadMatcher::Collect(const ArgumentLa
 	for (idx_t i = 0; i < layout.arguments.size(); i++) {
 		auto &argument = layout.arguments[i];
 		auto &param = signature.GetParameter(argument.parameter_index);
-		CollectBindings(param.GetTypeName(), argument.type, i, bindings);
+		auto &param_name = param.GetTypeName();
+		CollectBindings(param_name.IsExpansion() ? param_name.GetPattern() : param_name, argument.type, i, bindings);
 		auto variable = FindVariable(signature, param.GetTypeName());
 		if (!variable || !variable->IsValue() || IsUntyped(argument.type)) {
 			continue;
@@ -546,7 +634,49 @@ Result<VariableBindings, MatchFailure> OverloadMatcher::Collect(const ArgumentLa
 		if (!value) {
 			return Err(std::move(value.GetError()));
 		}
-		bindings.push_back({*variable, std::move(*value), i});
+		bindings.variables.push_back({*variable, std::move(*value), i});
+	}
+
+	// The pack a variadic parameter expands: every argument the parameter receives is one element, the type it says
+	// the pack is in the pattern - itself for "*T", the type of its elements for "*(T[])" - with its name as the label
+	// for "**kwargs". Without an argument it is the pack of no elements. It is not said if an argument does not say
+	// its element: an unresolved parameter, or an argument that has no parts for the pattern
+	for (auto &variadic_idx : {signature.GetArgsIndex(), signature.GetKwargsIndex()}) {
+		if (!variadic_idx.IsValid()) {
+			continue;
+		}
+		auto &variadic_name = signature.GetParameter(variadic_idx.GetIndex()).GetTypeName();
+		if (!variadic_name.IsExpansion()) {
+			continue;
+		}
+		auto &pack = GetExpandedPack(signature, variadic_name);
+		const bool is_named = variadic_name.GetExpansionKind() == TypeMultiplicity::NAMED_PACK;
+		idx_t argument_count = 0;
+		for (auto &argument : layout.arguments) {
+			argument_count += argument.parameter_index == variadic_idx.GetIndex() ? 1 : 0;
+		}
+		vector<LogicalType> types;
+		child_list_t<LogicalType> labelled_types;
+		for (auto &binding : bindings.variables) {
+			if (!RefersToSameObject(binding.variable.get(), pack)) {
+				continue;
+			}
+			auto said_type = TypeValue::GetType(binding.value);
+			if (said_type.id() == LogicalTypeId::UNKNOWN) {
+				continue;
+			}
+			auto type = LogicalType::NormalizeType(said_type);
+			if (is_named) {
+				auto argument_idx = layout.arguments[binding.argument].argument_index.GetIndex();
+				labelled_types.emplace_back(call.GetArgument(argument_idx).name, std::move(type));
+			} else {
+				types.push_back(std::move(type));
+			}
+		}
+		if (types.size() + labelled_types.size() == argument_count) {
+			bindings.packs.push_back(
+			    {pack, is_named ? TypePack::Named(std::move(labelled_types)) : TypePack::Positional(std::move(types))});
+		}
 	}
 	return std::move(bindings);
 }
@@ -565,11 +695,12 @@ static bool TryUnifyTypes(optional_ptr<ClientContext> context, const LogicalType
 //! Infer what the variables of a signature are from what the arguments say they are: the types the arguments say a
 //! type variable is are promoted to one type, and the values they say a value variable is have to be the same. In
 //! the promotion a NULL and an unresolved parameter take the other type, so a type variable is the type of a NULL if
-//! only NULLs are passed as it. A value variable that no argument says is not determined. A variable that is left
-//! to an unresolved parameter - no other argument says what it is - leaves the call unresolved, whatever the other
-//! overloads are and whether or not the other arguments can be passed. Returns why not: the arguments say different
-//! things about a variable, or what they say a constrained variable is is not of its kind. What the call needs to
-//! be determined is up to Substitute
+//! only NULLs are passed as it. A pack is the elements the one parameter that uses it says, see Collect. A value
+//! variable or a pack that no argument says is not determined. A variable that is left to an unresolved parameter -
+//! no other argument says what it is - leaves the call unresolved, whatever the other overloads are and whether or
+//! not the other arguments can be passed. Returns why not: the arguments say different things about a variable, or
+//! what they say a constrained variable is is not of its kind. What the call needs to be determined is up to
+//! Substitute
 Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLayout &layout,
                                                                const VariableBindings &bindings) const {
 	auto context = cache.GetContext();
@@ -582,10 +713,27 @@ Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLay
 		FunctionMismatch::TemplateDeduction conflict;
 		conflict.template_name = variable_name;
 
+		if (variable.IsPack()) {
+			// one parameter uses a pack, see FunctionSignature::Verify: what is passed to it says the pack
+			for (auto &binding : bindings.packs) {
+				if (RefersToSameObject(binding.pack.get(), variable)) {
+					variables.packs.emplace(variable_name, binding.elements);
+				}
+			}
+			// a NULL has no elements to say, an unresolved parameter is what could say them
+			const bool is_said = variables.packs.count(variable_name) > 0;
+			for (auto &argument : arguments) {
+				auto &name = signature.GetParameter(argument.parameter_index).GetTypeName();
+				const bool is_parameter = argument.type.id() == LogicalTypeId::UNKNOWN;
+				is_unresolved = is_unresolved || (!is_said && is_parameter && name.Contains(variable.GetName()));
+			}
+			continue;
+		}
+
 		if (variable.IsValue()) {
 			Value value;
 			bool has_parameter = false;
-			for (auto &binding : bindings) {
+			for (auto &binding : bindings.variables) {
 				if (!RefersToSameObject(binding.variable.get(), variable)) {
 					continue;
 				}
@@ -614,7 +762,7 @@ Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLay
 		LogicalType first_type;
 		vector<LogicalType> promotions;
 		bool is_said = false;
-		for (auto &binding : bindings) {
+		for (auto &binding : bindings.variables) {
 			if (!RefersToSameObject(binding.variable.get(), variable)) {
 				continue;
 			}
@@ -690,6 +838,10 @@ optional<LogicalType> OverloadMatcher::BindType(const TypeName &name, const Func
 //! passed through an unconstrained type variable (rule 2) or a type variable at all (rule 4), and what the type
 //! declares (rules 5 and 6)
 static FunctionRank RankTypeName(const FunctionSignature &signature, const TypeName &name) {
+	if (name.IsExpansion()) {
+		// what is expanded is what an argument is passed through: a pack counts like a type variable
+		return RankTypeName(signature, name.GetPattern());
+	}
 	FunctionRank rank;
 	auto variable = FindVariable(signature, name);
 	if (variable && variable->IsValue()) {
@@ -770,7 +922,10 @@ Result<PassedArguments, MatchFailure> OverloadMatcher::Substitute(const Argument
 	optional<FunctionMismatch::IncompatibleArgument> mismatch;
 	idx_t mismatch_count = 0;
 	for (auto &argument : layout.arguments) {
-		auto &name = signature.GetParameter(argument.parameter_index).GetTypeName();
+		// a variadic parameter that is an expansion passes every argument as the pattern, with its own element of
+		// the pack: what it says the pack is there
+		auto &parameter_name = signature.GetParameter(argument.parameter_index).GetTypeName();
+		auto &name = parameter_name.IsExpansion() ? parameter_name.GetPattern() : parameter_name;
 		auto &arg_type = argument.type;
 		const bool is_null = arg_type.id() == LogicalTypeId::SQLNULL;
 		auto type = BindType(name, variables, arg_type);
@@ -812,8 +967,9 @@ Result<PassedArguments, MatchFailure> OverloadMatcher::Substitute(const Argument
 	auto &return_type = signature.GetReturnType();
 	for (auto &variable : signature.GetVariables()) {
 		auto &variable_name = variable.GetName().GetIdentifierName();
-		const bool is_determined = variables.types.count(variable_name) + variables.values.count(variable_name) > 0;
-		if (!is_determined && return_type.IsType() && return_type.GetTypeName().Contains(variable.GetName())) {
+		const auto determined_count = variables.types.count(variable_name) + variables.values.count(variable_name) +
+		                              variables.packs.count(variable_name);
+		if (determined_count == 0 && return_type.IsType() && return_type.GetTypeName().Contains(variable.GetName())) {
 			return Err(MatchFailure {0, FunctionMismatch::TemplateUnresolved {variable_name, variable.IsValue()}});
 		}
 	}

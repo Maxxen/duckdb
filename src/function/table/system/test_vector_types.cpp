@@ -350,7 +350,8 @@ void TestVectorTypesFun::RegisterFunction(BuiltinFunctions &set) {
 	                                    .SetReturnType(ReturnType::TABLE()),
 	                                TestVectorTypesFunction, TestVectorTypesBind, TestVectorTypesInit);
 	test_vector_types.GetSignature()
-	    .AddArgs("args", LogicalType::ANY)
+	    .AddPack("A")
+	    .AddArgs("args", TypeName::PACK("A"))
 	    .WithTypedKwargs("options", [](TypedKwargs &options) { options.Add("all_flat", LogicalType::BOOLEAN); });
 	test_vector_types.table_scan_progress = TestVectorTypesProgress;
 

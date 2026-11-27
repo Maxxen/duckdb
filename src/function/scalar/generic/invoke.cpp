@@ -163,7 +163,7 @@ ScalarFunction InvokeFun::GetFunction() {
 	                       .SetReturnType(ReturnType::ANY()),
 	                   LambdaInvokeFunction);
 	fun.SetBindCallback(LambdaInvokeBind);
-	fun.GetSignature().AddArgs("args", LogicalType::ANY);
+	fun.GetSignature().AddPack("A").AddArgs("args", TypeName::PACK("A"));
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetBindLambdaCallback(LambdaInvokeBindParameters);
 	fun.SetInitStateCallback(LambdaInvokeState::Init);

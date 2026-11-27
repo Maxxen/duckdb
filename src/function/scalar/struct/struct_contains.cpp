@@ -263,10 +263,7 @@ static unique_ptr<FunctionData> StructContainsBind(BindScalarFunctionInput &inpu
 	vector<idx_t> matching_members;
 	auto &struct_type = arguments[0]->GetReturnType();
 	if (struct_type.id() != LogicalTypeId::SQLNULL) {
-		// an empty struct contains nothing, the search always returns false (or no position)
-		if (!StructType::GetChildTypes(struct_type).empty() && struct_type.id() != LogicalTypeId::TUPLE) {
-			throw BinderException("%s can only be used on unnamed structs", input.GetBoundFunction().GetName());
-		}
+		// an empty tuple contains nothing, the search always returns false (or no position)
 		CastStructContainsArguments(input);
 		// the members that can match the value are of the type of the value
 		auto &target_type = arguments[1]->GetReturnType();
@@ -283,9 +280,9 @@ static unique_ptr<FunctionData> StructContainsBind(BindScalarFunctionInput &inpu
 ScalarFunction StructContainsFun::GetFunction() {
 	ScalarFunction fun("struct_contains",
 	                   FunctionSignature()
-	                       .AddVariable("T", LogicalTypeId::TUPLE)
+	                       .AddPack("T")
 	                       .AddVariable("U")
-	                       .AddParameter("struct", TypeName::VARIABLE("T"))
+	                       .AddParameter("struct", TypeName::TUPLE({TypeName::PACK("T")}))
 	                       .AddParameter("entry", TypeName::VARIABLE("U"))
 	                       .SetReturnType(LogicalType::BOOLEAN),
 	                   StructSearchFunction<bool>);
@@ -296,9 +293,9 @@ ScalarFunction StructContainsFun::GetFunction() {
 ScalarFunction StructPositionFun::GetFunction() {
 	ScalarFunction fun("struct_contains",
 	                   FunctionSignature()
-	                       .AddVariable("T", LogicalTypeId::TUPLE)
+	                       .AddPack("T")
 	                       .AddVariable("U")
-	                       .AddParameter("struct", TypeName::VARIABLE("T"))
+	                       .AddParameter("struct", TypeName::TUPLE({TypeName::PACK("T")}))
 	                       .AddParameter("entry", TypeName::VARIABLE("U"))
 	                       .SetReturnType(LogicalType::INTEGER),
 	                   StructSearchFunction<int32_t, true>);

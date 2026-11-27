@@ -1677,3 +1677,899 @@ TEST_CASE("A return type callback resolves the type from the arguments of the bo
 	REQUIRE(bind(std::move(children), {})->GetReturnType() == LogicalType::SQLNULL);
 	con.Rollback();
 }
+
+TEST_CASE("A signature declares packs, which print with their stars", "[api][function_binding]") {
+	const auto t = TypeName::PACK("T");
+	const auto kv = TypeName::NAMED_PACK("KV");
+	const auto tuple = TypeName::TUPLE({t});
+	const TypeName structure(Identifier("STRUCT"), {kv});
+
+	auto declared = FunctionSignature().AddPack("T").AddNamedPack("KV").AddVariable("U");
+	REQUIRE(declared.GetVariables().size() == 3);
+	REQUIRE(declared.FindVariable("T")->IsPack());
+	REQUIRE(declared.FindVariable("T")->GetMultiplicity() == TypeVariable::Multiplicity::POSITIONAL_PACK);
+	REQUIRE(declared.FindVariable("KV")->GetMultiplicity() == TypeVariable::Multiplicity::NAMED_PACK);
+	REQUIRE(!declared.FindVariable("T")->IsValue());
+	REQUIRE(!declared.FindVariable("U")->IsPack());
+	REQUIRE(declared.FindVariable("T")->ToString() == "*T");
+	REQUIRE(declared.FindVariable("KV")->ToString() == "**KV");
+	REQUIRE(declared.FindVariable("U")->ToString() == "U");
+	// declaring a pack again is the same declaration
+	REQUIRE(FunctionSignature().AddPack("T").AddPack("T").GetVariables().size() == 1);
+
+	// struct_contains(struct TUPLE(*T), entry U) -> BOOLEAN
+	ScalarFunction struct_contains("struct_contains",
+	                               FunctionSignature()
+	                                   .AddPack("T")
+	                                   .AddVariable("U")
+	                                   .AddParameter("struct", tuple)
+	                                   .AddParameter("entry", TypeName::VARIABLE("U"))
+	                                   .SetReturnType(LogicalType::BOOLEAN),
+	                               NoopExec);
+	REQUIRE_NOTHROW(struct_contains.GetSignature().Verify());
+	REQUIRE(struct_contains.ToString() == "struct_contains(\"struct\" TUPLE(*T), entry U) -> BOOLEAN");
+
+	// struct_extract(struct STRUCT(**KV), entry VARCHAR) -> ANY
+	ScalarFunction struct_extract("struct_extract",
+	                              FunctionSignature()
+	                                  .AddNamedPack("KV")
+	                                  .AddParameter("struct", structure)
+	                                  .AddParameter("entry", LogicalType::VARCHAR)
+	                                  .SetReturnType(ReturnType::ANY()),
+	                              NoopExec);
+	REQUIRE_NOTHROW(struct_extract.GetSignature().Verify());
+	REQUIRE(struct_extract.ToString() == "struct_extract(\"struct\" STRUCT(**KV), entry VARCHAR) -> ANY");
+
+	// row(*args *T) -> TUPLE(*T)
+	ScalarFunction row("row", FunctionSignature().AddPack("T").AddArgs("args", t).SetReturnType(tuple), NoopExec);
+	REQUIRE_NOTHROW(row.GetSignature().Verify());
+	REQUIRE(row.ToString() == "\"row\"(*args *T) -> TUPLE(*T)");
+	REQUIRE(row.GetSignature().GetParameter(0).ToString() == "*args *T");
+
+	// struct_pack(**kwargs **KV) -> STRUCT(**KV)
+	ScalarFunction struct_pack("struct_pack",
+	                           FunctionSignature().AddNamedPack("KV").AddKwargs("kwargs", kv).SetReturnType(structure),
+	                           NoopExec);
+	REQUIRE_NOTHROW(struct_pack.GetSignature().Verify());
+	REQUIRE(struct_pack.ToString() == "struct_pack(**kwargs **KV) -> STRUCT(**KV)");
+
+	// "*args T" with a single variable is every argument as a T, and prints as before
+	const auto single_t = TypeName::VARIABLE("T");
+	ScalarFunction items(
+	    "items", FunctionSignature().AddVariable("T").AddArgs("args", single_t).SetReturnType(TypeName::LIST(single_t)),
+	    NoopExec);
+	REQUIRE_NOTHROW(items.GetSignature().Verify());
+	REQUIRE(items.ToString() == "items(*args T) -> T[]");
+
+	// a pack below another type, and as the argument of a type that is not built in, which is not checked
+	REQUIRE_NOTHROW(FunctionSignature().AddPack("T").AddParameter("x", TypeName::LIST(tuple)).Verify());
+	REQUIRE_NOTHROW(FunctionSignature().AddPack("T").AddParameter("x", TypeName(Identifier("my_type"), {t})).Verify());
+	REQUIRE_NOTHROW(
+	    FunctionSignature().AddNamedPack("KV").AddParameter("x", TypeName(Identifier("UNION"), {kv})).Verify());
+
+	// TUPLE(T) takes one type and TUPLE(*T) any number: the use says which, so they are two type names and two
+	// overloads
+	const auto single_tuple = TypeName::TUPLE({single_t});
+	const auto named_tuple = TypeName::TUPLE({TypeName::NAMED_PACK("T")});
+	REQUIRE(single_tuple.ToString() == "TUPLE(T)");
+	REQUIRE(single_tuple != tuple);
+	REQUIRE(single_tuple.Hash() != tuple.Hash());
+	REQUIRE(named_tuple != tuple);
+	REQUIRE(named_tuple.Hash() != tuple.Hash());
+	REQUIRE(tuple == TypeName::TUPLE({TypeName::PACK("T")}));
+	REQUIRE(tuple.Hash() == TypeName::TUPLE({TypeName::PACK("T")}).Hash());
+	auto single = FunctionSignature().AddVariable("T").AddParameter("x", single_tuple);
+	auto pack = FunctionSignature().AddPack("T").AddParameter("x", tuple);
+	REQUIRE(!single.IsSameOverload(pack));
+	REQUIRE(!single.Equal(pack));
+	REQUIRE(single != pack);
+	REQUIRE(pack.IsSameOverload(FunctionSignature().AddPack("T").AddParameter("y", tuple)));
+	REQUIRE(!pack.IsSameOverload(FunctionSignature().AddNamedPack("T").AddParameter("x", named_tuple)));
+}
+
+TEST_CASE("A signature that misuses a pack is rejected", "[api][function_binding]") {
+	const auto t = TypeName::PACK("T");
+	const auto kv = TypeName::NAMED_PACK("KV");
+	const auto tuple = TypeName::TUPLE({t});
+	const TypeName structure(Identifier("STRUCT"), {kv});
+
+	// a pack is a variable of its own: not also a single variable or the other kind of pack, not a built-in type,
+	// and not constrained
+	REQUIRE_THROWS_WITH(FunctionSignature().AddVariable("T").AddPack("T"), Catch::Contains("declared twice"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddVariable("T"), Catch::Contains("declared twice"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddNamedPack("T"), Catch::Contains("declared twice"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("TUPLE"), Catch::Contains("is named like a built-in type"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddNamedPack("any"), Catch::Contains("is named like a built-in type"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddConstraint("T", LogicalTypeId::STRUCT),
+	                    Catch::Contains("not a type variable of the signature"));
+
+	// every use is written as the variable is declared: a pack with its stars, a single variable without
+	const auto unstarred = TypeName::VARIABLE("T");
+	const auto unstarred_kv = TypeName::VARIABLE("KV");
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddParameter("x", TypeName::TUPLE({unstarred})).Verify(),
+	                    Catch::Contains("Pack '*T' is used as 'T': a pack is written with its stars where it is used"));
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature()
+	        .AddNamedPack("KV")
+	        .AddParameter("x", TypeName(Identifier("STRUCT"), {unstarred_kv}))
+	        .Verify(),
+	    Catch::Contains("Pack '**KV' is used as 'KV': a pack is written with its stars where it is used"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddArgs("args", unstarred).Verify(),
+	                    Catch::Contains("Pack '*T' is used as 'T'"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddVariable("T").AddParameter("x", tuple).Verify(),
+	                    Catch::Contains("Variable 'T' is not a pack: it is used as 'T', not as '*T'"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddVariable("KV").AddParameter("x", structure).Verify(),
+	                    Catch::Contains("Variable 'KV' is not a pack: it is used as 'KV', not as '**KV'"));
+	REQUIRE_THROWS_WITH(FunctionSignature()
+	                        .AddVariable("N", TypeVariable::Kind::INTEGER)
+	                        .AddParameter("x", TypeName::TUPLE({TypeName::PACK("N")}))
+	                        .Verify(),
+	                    Catch::Contains("Variable 'N: INTEGER' is not a pack: it is used as 'N', not as '*N'"));
+	REQUIRE_THROWS_WITH(FunctionSignature()
+	                        .AddPack("T")
+	                        .AddParameter("x", TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("T")}))
+	                        .Verify(),
+	                    Catch::Contains("Pack '*T' is used as '**T': its types have no labels"));
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature().AddNamedPack("KV").AddParameter("x", TypeName::TUPLE({TypeName::PACK("KV")})).Verify(),
+	    Catch::Contains("Pack '**KV' is used as '*KV': using a named pack without its labels is not supported"));
+	REQUIRE_THROWS_WITH(FunctionSignature()
+	                        .AddNamedPack("KV")
+	                        .AddParameter("x", structure)
+	                        .SetReturnType(TypeName::TUPLE({TypeName::PACK("KV")}))
+	                        .Verify(),
+	                    Catch::Contains("Pack '**KV' is used as '*KV'"));
+	// and a starred name is a pack the signature declares
+	REQUIRE_THROWS_WITH(FunctionSignature().AddParameter("x", tuple).Verify(),
+	                    Catch::Contains("'*T' is not a pack the signature declares"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddParameter("x", LogicalType::INTEGER).SetReturnType(structure).Verify(),
+	                    Catch::Contains("'**KV' is not a pack the signature declares"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddParameter("x", TypeName::TUPLE({TypeName::PACK("INTEGER")})).Verify(),
+	                    Catch::Contains("'*INTEGER' is not a pack the signature declares"));
+
+	// an expansion is over one pack, which is expanded once
+	const auto lists = TypeName::EXPAND(TypeName::LIST(TypeName::VARIABLE("T")));
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature().AddPack("T").AddParameter("x", TypeName::TUPLE({TypeName::EXPAND(t)})).Verify(),
+	    Catch::Contains("'*(*T)' expands '*T', which is an expansion itself: a pack is expanded once"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddArgs("args", TypeName::EXPAND(TypeName::LIST(t))).Verify(),
+	                    Catch::Contains("'*((*T)[])' expands '*T', which is an expansion itself"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddVariable("T").AddArgs("args", lists).Verify(),
+	                    Catch::Contains("'*(T[])' expands no pack: an expansion is over one pack of the signature"));
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature().AddArgs("args", TypeName::EXPAND(TypeName::LIST(LogicalType::INTEGER))).Verify(),
+	    Catch::Contains("'*(INTEGER[])' expands no pack"));
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature()
+	        .AddPack("T")
+	        .AddPack("U")
+	        .AddArgs("args", TypeName::EXPAND(TypeName::MAP(TypeName::VARIABLE("T"), TypeName::VARIABLE("U"))))
+	        .Verify(),
+	    Catch::Contains("'*(MAP(T, U))' expands more than one pack: an expansion is over one pack of the signature"));
+	// of the kind of the expansion
+	REQUIRE_THROWS_WITH(FunctionSignature()
+	                        .AddPack("T")
+	                        .AddKwargs("kwargs", TypeName::EXPAND_NAMED(TypeName::LIST(unstarred)))
+	                        .Verify(),
+	                    Catch::Contains("Pack '*T' is used as '**(T[])': its types have no labels"));
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature().AddNamedPack("KV").AddArgs("args", TypeName::EXPAND(TypeName::LIST(unstarred_kv))).Verify(),
+	    Catch::Contains("Pack '**KV' is used as '*(KV[])': using a named pack without its labels is not supported"));
+	// a pattern is expanded as the type of a variadic parameter of its kind: every argument is matched against it
+	REQUIRE_NOTHROW(FunctionSignature().AddPack("T").AddArgs("args", lists).Verify());
+	REQUIRE_NOTHROW(FunctionSignature()
+	                    .AddNamedPack("KV")
+	                    .AddKwargs("kwargs", TypeName::EXPAND_NAMED(TypeName::LIST(unstarred_kv)))
+	                    .Verify());
+	REQUIRE_NOTHROW(FunctionSignature()
+	                    .AddVariable("K")
+	                    .AddPack("T")
+	                    .AddArgs("args", TypeName::EXPAND(TypeName::MAP(TypeName::VARIABLE("K"), unstarred)))
+	                    .Verify());
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddParameter("x", lists).Verify(),
+	                    Catch::Contains("a pack '*(T[])' is the type of a '*args' parameter"));
+	// a type takes a pack by itself
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddParameter("x", TypeName::TUPLE({lists})).Verify(),
+	                    Catch::Contains("'*(T[])' expands a pattern in 'TUPLE(*(T[]))': a pattern is only expanded as "
+	                                    "the type of a variadic parameter, a type takes a pack by itself, as '*T'"));
+	REQUIRE_THROWS_WITH(FunctionSignature()
+	                        .AddPack("T")
+	                        .AddArgs("args", TypeName::PACK("T"))
+	                        .SetReturnType(TypeName::TUPLE({lists}))
+	                        .Verify(),
+	                    Catch::Contains("'*(T[])' expands a pattern in 'TUPLE(*(T[]))'"));
+
+	// every declared pack is used
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddParameter("x", LogicalType::INTEGER).Verify(),
+	                    Catch::Contains("Pack '*T' is declared but not used"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddNamedPack("KV").AddParameter("x", tuple).Verify(),
+	                    Catch::Contains("Pack '**KV' is declared but not used"));
+
+	// a pack is the only argument of the type name that takes it, without a label
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature().AddPack("T").AddParameter("x", TypeName::TUPLE({LogicalType::INTEGER, t})).Verify(),
+	    Catch::Contains("Pack '*T' has to be the only argument of 'TUPLE(INTEGER, *T)'"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddParameter("x", TypeName::TUPLE({t, t})).Verify(),
+	                    Catch::Contains("has to be the only argument"));
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature().AddNamedPack("KV").AddParameter("x", TypeName::STRUCT({{"a", kv}})).Verify(),
+	    Catch::Contains("Pack '**KV' has to be the only argument of 'STRUCT(a **KV)', without a label"));
+
+	// a built-in type takes a pack the way its constructor takes its parameters: TUPLE by position, STRUCT and
+	// UNION by name, and a type that takes a fixed number of parameters, or values, takes none
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature().AddPack("T").AddParameter("x", TypeName(Identifier("STRUCT"), {t})).Verify(),
+	    Catch::Contains("Type STRUCT does not take the types of a pack '*T'"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddParameter("x", TypeName(Identifier("UNION"), {t})).Verify(),
+	                    Catch::Contains("Type UNION does not take the types of a pack '*T'"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddNamedPack("KV").AddParameter("x", TypeName::TUPLE({kv})).Verify(),
+	                    Catch::Contains("Type TUPLE does not take the types of a pack '**KV'"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddParameter("x", TypeName::LIST(t)).Verify(),
+	                    Catch::Contains("Type LIST does not take the types of a pack '*T'"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddParameter("x", TypeName(Identifier("ENUM"), {t})).Verify(),
+	                    Catch::Contains("Type ENUM does not take the types of a pack '*T'"));
+
+	// a pack by itself is not a type: it is what "*args" receives, or "**kwargs" if it is a named pack
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddParameter("x", t).Verify(),
+	                    Catch::Contains("Parameter 'x *T' is not a type: a pack '*T' is the type of a '*args'"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddNamedPack("KV").AddArgs("args", kv).Verify(),
+	                    Catch::Contains("a pack '**KV' is the type of a '**kwargs' parameter"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddKwargs("kwargs", t).Verify(),
+	                    Catch::Contains("a pack '*T' is the type of a '*args' parameter"));
+	REQUIRE_THROWS_WITH(FunctionSignature().AddPack("T").AddParameter("x", tuple).SetReturnType(ReturnType(t)).Verify(),
+	                    Catch::Contains("The return type '*T' is not a type"));
+
+	// a pack is a type variable where ANY may not be used next to one
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature().AddPack("T").AddParameter("x", TypeName::MAP(LogicalType::ANY, tuple)).Verify(),
+	    Catch::Contains("uses ANY and a type variable in the same type"));
+}
+
+TEST_CASE("A pack holds its types in order, read from a type or given as a list", "[api][function_binding]") {
+	const auto tuple = LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::VARCHAR});
+	const auto structure = LogicalType::STRUCT({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}});
+
+	// the types of a tuple have no labels
+	auto from_tuple = TypePack::ParametersOf(tuple);
+	REQUIRE(from_tuple.Count() == 2);
+	REQUIRE(from_tuple.GetType(0) == LogicalType::INTEGER);
+	REQUIRE(from_tuple.GetType(1) == LogicalType::VARCHAR);
+	REQUIRE(!from_tuple.GetLabel(0));
+	REQUIRE(!from_tuple.GetLabel(1));
+	REQUIRE(from_tuple.ToString() == "(INTEGER, VARCHAR)");
+
+	// the types of a struct, and of a union, have theirs
+	auto from_struct = TypePack::ParametersOf(structure);
+	REQUIRE(from_struct.Count() == 2);
+	REQUIRE(from_struct.GetType(1) == LogicalType::VARCHAR);
+	REQUIRE(*from_struct.GetLabel(0) == Identifier("a"));
+	REQUIRE(*from_struct.GetLabel(1) == Identifier("b"));
+	REQUIRE(from_struct.ToString() == "(a INTEGER, b VARCHAR)");
+	auto from_union =
+	    TypePack::ParametersOf(LogicalType::UNION({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
+	REQUIRE(from_union.ToString() == "(a INTEGER, b VARCHAR)");
+
+	// a list of types is the same pack as the types of the tuple, a list of labelled types as those of the struct:
+	// a pack made from a type holds its own copy of the elements
+	auto listed = TypePack::Positional({LogicalType::INTEGER, LogicalType::VARCHAR});
+	REQUIRE(listed.Count() == 2);
+	REQUIRE(listed.GetType(0) == LogicalType::INTEGER);
+	REQUIRE(!listed.GetLabel(0));
+	REQUIRE(listed.ToString() == "(INTEGER, VARCHAR)");
+	REQUIRE(listed == from_tuple);
+	REQUIRE(from_tuple == listed);
+	auto labelled = TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}});
+	REQUIRE(*labelled.GetLabel(1) == Identifier("b"));
+	REQUIRE(labelled.ToString() == "(a INTEGER, b VARCHAR)");
+	REQUIRE(labelled == from_struct);
+	REQUIRE(labelled == from_union);
+
+	// packs differ by a label, a type, the order and the number of their elements
+	REQUIRE(listed != labelled);
+	REQUIRE(from_tuple != from_struct);
+	REQUIRE(listed != TypePack::Positional({LogicalType::VARCHAR, LogicalType::INTEGER}));
+	REQUIRE(listed != TypePack::Positional({LogicalType::INTEGER, LogicalType::BIGINT}));
+	REQUIRE(listed != TypePack::Positional({LogicalType::INTEGER}));
+	REQUIRE(labelled != TypePack::Named({{"a", LogicalType::INTEGER}, {"c", LogicalType::VARCHAR}}));
+
+	// an empty pack
+	auto empty_tuple = TypePack::ParametersOf(LogicalType::TUPLE(vector<LogicalType>()));
+	REQUIRE(empty_tuple.Count() == 0);
+	REQUIRE(empty_tuple.ToString() == "()");
+	REQUIRE(empty_tuple == TypePack::Positional(vector<LogicalType>()));
+	REQUIRE(empty_tuple != listed);
+
+	// a label is what makes an element one of a named pack, and a type whose parameters are not types has no types
+	REQUIRE_THROWS_WITH(TypePack::Named({{"", LogicalType::INTEGER}}), Catch::Contains("has no label"));
+	REQUIRE_THROWS_WITH(TypePack::ParametersOf(LogicalType::DECIMAL(18, 3)),
+	                    Catch::Contains("is not a type, so it is not an element of a pack of types"));
+
+	// the variables of a call hold a pack by the name of its variable
+	FunctionVariables variables;
+	variables.packs.emplace("T", from_tuple);
+	REQUIRE(variables.packs.at("T") == listed);
+	REQUIRE(variables.types.empty());
+}
+
+//! search(struct TUPLE(*T), entry U) -> BOOLEAN
+static FunctionSignature GetTupleSearchSignature() {
+	return FunctionSignature()
+	    .AddPack("T")
+	    .AddVariable("U")
+	    .AddParameter("struct", TypeName::TUPLE({TypeName::PACK("T")}))
+	    .AddParameter("entry", TypeName::VARIABLE("U"))
+	    .SetReturnType(LogicalType::BOOLEAN);
+}
+
+TEST_CASE("A positional pack is the types of the tuple that is passed as it", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const LogicalType integer = LogicalType::INTEGER;
+	const auto tuple = LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::VARCHAR});
+	const auto empty_tuple = LogicalType::TUPLE(vector<LogicalType>());
+	const auto nested_tuple = LogicalType::TUPLE({tuple, LogicalType::LIST(LogicalType::DOUBLE)});
+	const auto structure = LogicalType::STRUCT({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}});
+	const auto empty_struct = LogicalType::STRUCT(child_list_t<LogicalType>());
+	ScalarFunctionSet search("search");
+	search.AddFunction(ScalarFunction("search", GetTupleSearchSignature(), NoopExec));
+	REQUIRE(search.GetOverload(0).GetSignature().ToString() == "(\"struct\" TUPLE(*T), entry U) -> BOOLEAN");
+
+	con.context->RunFunctionInTransaction([&]() {
+		// a tuple says the pack: its types in order - it is passed as it is, at no cost
+		auto selection = FunctionBinder::SelectFunction(*con.context, search, {tuple, integer});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("T") ==
+		        TypePack::Positional({LogicalType::INTEGER, LogicalType::VARCHAR}));
+		REQUIRE(selection.GetBinding().variables.types.count("T") == 0);
+		REQUIRE(selection.GetBinding().variables.types.at("U") == integer);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == tuple);
+		REQUIRE(selection.GetBinding().rank.cast_cost == 0);
+		selection = FunctionBinder::SelectFunction(*con.context, search, {nested_tuple, integer});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("T") ==
+		        TypePack::Positional({tuple, LogicalType::LIST(LogicalType::DOUBLE)}));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == nested_tuple);
+
+		// a tuple without types says the pack without elements
+		selection = FunctionBinder::SelectFunction(*con.context, search, {empty_tuple, integer});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("T").Count() == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_tuple);
+
+		// a struct with names is not a tuple: it says nothing about the pack, and cannot be passed - like any type of
+		// another kind
+		selection = FunctionBinder::SelectFunction(*con.context, search, {structure, integer});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
+		REQUIRE_THAT(GetErrorMessage(selection),
+		             Catch::Contains("Argument 1 of type STRUCT(a INTEGER, b VARCHAR) cannot be implicitly cast to "
+		                             "TUPLE(*T)"));
+
+		// a struct without fields has no names either: it says the pack without elements, and is cast to the tuple
+		// without elements, which costs the change of kind
+		selection = FunctionBinder::SelectFunction(*con.context, search, {empty_struct, integer});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("T").Count() == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_tuple);
+		REQUIRE(selection.GetBinding().rank.cast_cost == 1);
+
+		// a NULL has no elements to say: it is passed as it is, and costs the cast of a NULL to a tuple
+		selection = FunctionBinder::SelectFunction(*con.context, search, {LogicalType::SQLNULL, integer});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.count("T") == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::SQLNULL);
+		REQUIRE(selection.GetBinding().rank.cast_cost == 161);
+
+		// an unresolved parameter is what could say the pack: the call is unresolved
+		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, search, {LogicalType::UNKNOWN, integer}),
+		                    Catch::Contains("Parameter types could not be resolved"));
+
+		// a type of another kind says nothing, and cannot be passed
+		for (auto &other : {LogicalType::LIST(LogicalType::INTEGER), LogicalType(LogicalType::INTEGER),
+		                    LogicalType::MAP(LogicalType::INTEGER, LogicalType::VARCHAR)}) {
+			selection = FunctionBinder::SelectFunction(*con.context, search, {other, integer});
+			REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+			REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
+			REQUIRE_THAT(GetErrorMessage(selection), Catch::Contains("cannot be implicitly cast to TUPLE(*T)"));
+		}
+	});
+
+	// one parameter uses a pack, so that one argument says what it is
+	REQUIRE_THROWS_WITH(FunctionSignature()
+	                        .AddPack("T")
+	                        .AddParameter("x", TypeName::TUPLE({TypeName::PACK("T")}))
+	                        .AddParameter("y", TypeName::TUPLE({TypeName::PACK("T")}))
+	                        .Verify(),
+	                    Catch::Contains("Pack '*T' is used by the parameters more than once"));
+}
+
+TEST_CASE("A pack ranks like a type variable in the type that takes it", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto t = TypeName::VARIABLE("T");
+	const auto pack_tuple = TypeName::TUPLE({TypeName::PACK("P")});
+	const auto int_varchar_tuple = TypeName::TUPLE({LogicalType::INTEGER, LogicalType::VARCHAR});
+	// f(x TUPLE(*P)), f(x T[]), f(x T), f(x TUPLE(INTEGER, VARCHAR))
+	const auto packed =
+	    FunctionSignature().AddPack("P").AddParameter("x", pack_tuple).SetReturnType(LogicalType::INTEGER);
+	const auto listed = GetSelectionSignature({TypeName::LIST(t)});
+	const auto generic = GetSelectionSignature({t});
+	const auto concrete = GetSelectionSignature({int_varchar_tuple});
+
+	con.context->RunFunctionInTransaction([&]() {
+		const auto tuple = LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::VARCHAR});
+		const LogicalType null = LogicalType::SQLNULL;
+
+		// a tuple: as T[] ranks for a list - rule 2 counts the argument, rule 4 the parameter, rule 5 the type name
+		ScalarFunctionSet set("f");
+		set.AddFunction(ScalarFunction("f", packed, NoopExec));
+		auto selection = FunctionBinder::SelectFunction(*con.context, set, {tuple});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().rank == MakeRank(1, 0, 1, 2, 0));
+		// a NULL is not counted by rule 2, and costs the cast of a NULL to a tuple
+		selection = FunctionBinder::SelectFunction(*con.context, set, {null});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().rank == MakeRank(0, 161, 1, 2, 0));
+
+		// rule 5: TUPLE(*P) over T, a tuple
+		set.AddFunction(ScalarFunction("f", generic, NoopExec));
+		selection = FunctionBinder::SelectFunction(*con.context, set, {tuple});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+		// rule 2: TUPLE(INTEGER, VARCHAR) over TUPLE(*P), the tuple
+		set.AddFunction(ScalarFunction("f", concrete, NoopExec));
+		selection = FunctionBinder::SelectFunction(*con.context, set, {tuple});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 2);
+
+		// rule 3: T[] over TUPLE(*P), a NULL - an untyped value is a list rather than a tuple
+		ScalarFunctionSet nested("g");
+		nested.AddFunction(ScalarFunction("g", packed, NoopExec));
+		nested.AddFunction(ScalarFunction("g", listed, NoopExec));
+		selection = FunctionBinder::SelectFunction(*con.context, nested, {null});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 1);
+		// and only TUPLE(*P) takes a tuple
+		selection = FunctionBinder::SelectFunction(*con.context, nested, {tuple});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+	});
+}
+
+//! keys(struct STRUCT(**KV)) -> INTEGER
+static FunctionSignature GetStructKeysSignature() {
+	return FunctionSignature()
+	    .AddNamedPack("KV")
+	    .AddParameter("struct", TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")}))
+	    .SetReturnType(LogicalType::INTEGER);
+}
+
+TEST_CASE("A named pack is the fields of the struct that is passed as it", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto structure = LogicalType::STRUCT({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}});
+	const auto nested_struct = LogicalType::STRUCT({{"s", structure}, {"l", LogicalType::LIST(LogicalType::DOUBLE)}});
+	const auto empty_struct = LogicalType::STRUCT(child_list_t<LogicalType>());
+	const auto tuple = LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::VARCHAR});
+	const auto empty_tuple = LogicalType::TUPLE(vector<LogicalType>());
+	const auto union_type = LogicalType::UNION({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}});
+	ScalarFunctionSet keys("keys");
+	keys.AddFunction(ScalarFunction("keys", GetStructKeysSignature(), NoopExec));
+	REQUIRE(keys.GetOverload(0).GetSignature().ToString() == "(\"struct\" STRUCT(**KV)) -> INTEGER");
+	// tag("union" UNION(**KV)) -> INTEGER
+	ScalarFunctionSet tag("tag");
+	tag.AddFunction(
+	    ScalarFunction("tag",
+	                   FunctionSignature()
+	                       .AddNamedPack("KV")
+	                       .AddParameter("union", TypeName(Identifier("UNION"), {TypeName::NAMED_PACK("KV")}))
+	                       .SetReturnType(LogicalType::INTEGER),
+	                   NoopExec));
+
+	con.context->RunFunctionInTransaction([&]() {
+		// a struct says the pack: its fields in order, each with its name - it is passed as it is, at no cost
+		auto selection = FunctionBinder::SelectFunction(*con.context, keys, {structure});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("KV") ==
+		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
+		REQUIRE(selection.GetBinding().variables.types.count("KV") == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == structure);
+		REQUIRE(selection.GetBinding().rank.cast_cost == 0);
+		selection = FunctionBinder::SelectFunction(*con.context, keys, {nested_struct});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("KV") ==
+		        TypePack::Named({{"s", structure}, {"l", LogicalType::LIST(LogicalType::DOUBLE)}}));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == nested_struct);
+
+		// a struct without fields says the pack without elements
+		selection = FunctionBinder::SelectFunction(*con.context, keys, {empty_struct});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("KV").Count() == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_struct);
+
+		// the labels go to the type that is constructed from the pack: a struct with an alias is a type of its own,
+		// and is cast explicitly to the struct of its fields by a caller that knows the function it calls
+		const auto aliased = structure.WithAlias("pair");
+		auto binding = FunctionBinder::MatchFunction(*con.context, keys.GetSharedOverload(0), {aliased});
+		REQUIRE(binding.variables.packs.at("KV") ==
+		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
+		REQUIRE(binding.layout.arguments[0].type == structure);
+		REQUIRE(binding.layout.arguments[0].type.GetAlias().empty());
+
+		// a union says the members of UNION(**KV)
+		selection = FunctionBinder::SelectFunction(*con.context, tag, {union_type});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("KV") ==
+		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == union_type);
+		selection = FunctionBinder::SelectFunction(*con.context, tag, {structure});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+		REQUIRE_THAT(GetErrorMessage(selection), Catch::Contains("cannot be implicitly cast to UNION(**KV)"));
+
+		// a tuple without elements says the pack without elements, and is cast to the struct without fields, which
+		// costs the change of kind
+		selection = FunctionBinder::SelectFunction(*con.context, keys, {empty_tuple});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("KV").Count() == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_struct);
+		REQUIRE(selection.GetBinding().rank.cast_cost == 1);
+
+		// a tuple with elements is not a struct with names: it says nothing about the pack, and cannot be passed -
+		// like any type of another kind
+		for (auto &other :
+		     {tuple, LogicalType::LIST(LogicalType::INTEGER), union_type, LogicalType(LogicalType::INTEGER),
+		      LogicalType::MAP(LogicalType::INTEGER, LogicalType::VARCHAR)}) {
+			selection = FunctionBinder::SelectFunction(*con.context, keys, {other});
+			REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+			REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
+			REQUIRE_THAT(GetErrorMessage(selection), Catch::Contains("cannot be implicitly cast to STRUCT(**KV)"));
+		}
+		selection = FunctionBinder::SelectFunction(*con.context, keys, {tuple});
+		REQUIRE_THAT(GetErrorMessage(selection),
+		             Catch::Contains("Argument 1 of type TUPLE(INTEGER, VARCHAR) cannot be implicitly cast to "
+		                             "STRUCT(**KV)"));
+
+		// a NULL has no fields to say: it is passed as it is, and costs the cast of a NULL to a struct
+		selection = FunctionBinder::SelectFunction(*con.context, keys, {LogicalType::SQLNULL});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.count("KV") == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::SQLNULL);
+		REQUIRE(selection.GetBinding().rank.cast_cost == 160);
+
+		// an unresolved parameter is what could say the pack: the call is unresolved
+		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, keys, {LogicalType::UNKNOWN}),
+		                    Catch::Contains("Parameter types could not be resolved"));
+	});
+}
+
+TEST_CASE("A struct with names and a tuple each select the overload of their kind", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto t = TypeName::VARIABLE("T");
+	const auto named = GetStructKeysSignature();
+	const auto positional = FunctionSignature().AddPack("P").AddParameter("x", TypeName::TUPLE({TypeName::PACK("P")}));
+	const auto generic = GetSelectionSignature({t});
+	const auto listed = GetSelectionSignature({TypeName::LIST(t)});
+	const auto concrete = GetSelectionSignature({TypeName::STRUCT({{"a", LogicalType::INTEGER}})});
+
+	con.context->RunFunctionInTransaction([&]() {
+		const auto structure = LogicalType::STRUCT({{"a", LogicalType::INTEGER}});
+		const auto tuple = LogicalType::TUPLE({LogicalType::INTEGER});
+		const LogicalType null = LogicalType::SQLNULL;
+
+		// a struct: as TUPLE(*T) ranks for a tuple
+		ScalarFunctionSet set("f");
+		set.AddFunction(ScalarFunction("f", named, NoopExec));
+		auto selection = FunctionBinder::SelectFunction(*con.context, set, {structure});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().rank == MakeRank(1, 0, 1, 2, 0));
+		selection = FunctionBinder::SelectFunction(*con.context, set, {null});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().rank == MakeRank(0, 160, 1, 2, 0));
+
+		// f(struct STRUCT(**KV)) and f(x TUPLE(*P)): only one takes a struct, only the other a tuple, and a NULL is
+		// a struct rather than a tuple (rule 3: 160 against 161)
+		set.AddFunction(ScalarFunction("f", positional, NoopExec));
+		selection = FunctionBinder::SelectFunction(*con.context, set, {structure});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+		selection = FunctionBinder::SelectFunction(*con.context, set, {tuple});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 1);
+		selection = FunctionBinder::SelectFunction(*con.context, set, {null});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+
+		// a struct without fields and a tuple without elements fit both, and each selects the overload of its own
+		// kind (rule 3: 0 against the 1 that the change of kind costs)
+		const auto empty_struct = LogicalType::STRUCT(child_list_t<LogicalType>());
+		const auto empty_tuple = LogicalType::TUPLE(vector<LogicalType>());
+		selection = FunctionBinder::SelectFunction(*con.context, set, {empty_struct});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+		REQUIRE(selection.GetBinding().rank.cast_cost == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_struct);
+		selection = FunctionBinder::SelectFunction(*con.context, set, {empty_tuple});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 1);
+		REQUIRE(selection.GetBinding().rank.cast_cost == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_tuple);
+
+		// rule 5: STRUCT(**KV) over T, a struct
+		set.AddFunction(ScalarFunction("f", generic, NoopExec));
+		selection = FunctionBinder::SelectFunction(*con.context, set, {structure});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+		// rule 2: STRUCT(a INTEGER) over STRUCT(**KV), the struct
+		set.AddFunction(ScalarFunction("f", concrete, NoopExec));
+		selection = FunctionBinder::SelectFunction(*con.context, set, {structure});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 3);
+
+		// g(struct STRUCT(**KV)) and g(x T[]): a NULL is as much a struct as a list - both cost 160 and rank the same
+		ScalarFunctionSet nested("g");
+		nested.AddFunction(ScalarFunction("g", named, NoopExec));
+		nested.AddFunction(ScalarFunction("g", listed, NoopExec));
+		selection = FunctionBinder::SelectFunction(*con.context, nested, {structure});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+		selection = FunctionBinder::SelectFunction(*con.context, nested, {null});
+		REQUIRE_THAT(GetErrorMessage(selection), Catch::Contains("Could not choose a best candidate function"));
+	});
+}
+
+TEST_CASE("A pattern that a variadic parameter expands is matched by every argument", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto t = TypeName::VARIABLE("T");
+	const auto lists = TypeName::EXPAND(TypeName::LIST(t));
+	// zip(*lists *(T[])) -> TUPLE(*T)[]
+	ScalarFunctionSet zip("zip");
+	zip.AddFunction(ScalarFunction("zip",
+	                               FunctionSignature()
+	                                   .AddPack("T")
+	                                   .AddArgs("lists", lists)
+	                                   .SetReturnType(TypeName::LIST(TypeName::TUPLE({TypeName::PACK("T")}))),
+	                               NoopExec));
+	// any_lists(*lists ANY[])
+	ScalarFunctionSet any_lists("any_lists");
+	any_lists.AddFunction(ScalarFunction(
+	    "any_lists",
+	    FunctionSignature().AddArgs("lists", TypeName::LIST(LogicalType::ANY)).SetReturnType(LogicalType::INTEGER),
+	    NoopExec));
+	// tagged(**kwargs **(KV[])) -> STRUCT(**KV)
+	const TypeName named_struct(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")});
+	ScalarFunctionSet tagged("tagged");
+	tagged.AddFunction(
+	    ScalarFunction("tagged",
+	                   FunctionSignature()
+	                       .AddNamedPack("KV")
+	                       .AddKwargs("kwargs", TypeName::EXPAND_NAMED(TypeName::LIST(TypeName::VARIABLE("KV"))))
+	                       .SetReturnType(named_struct),
+	                   NoopExec));
+	// keyed(*maps *(MAP(K, V))) -> K: one key type for all the maps, a value type for each
+	const auto k = TypeName::VARIABLE("K");
+	ScalarFunctionSet keyed("keyed");
+	keyed.AddFunction(ScalarFunction("keyed",
+	                                 FunctionSignature()
+	                                     .AddVariable("K")
+	                                     .AddPack("V")
+	                                     .AddArgs("maps", TypeName::EXPAND(TypeName::MAP(k, TypeName::VARIABLE("V"))))
+	                                     .SetReturnType(k),
+	                                 NoopExec));
+
+	const auto integers = LogicalType::LIST(LogicalType::INTEGER);
+	const auto strings = LogicalType::LIST(LogicalType::VARCHAR);
+	const auto integer_array = LogicalType::ARRAY(LogicalType::INTEGER, 3);
+	const auto empty_list = LogicalType::LIST(LogicalType::SQLNULL);
+	const LogicalType string_literal(LogicalTypeId::STRING_LITERAL);
+	const auto unknown = LogicalType(LogicalType::UNKNOWN);
+
+	con.context->RunFunctionInTransaction([&]() {
+		// no argument: the pack of no elements
+		auto selection = FunctionBinder::SelectFunction(*con.context, zip, {});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("T").Count() == 0);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
+		        LogicalType::LIST(LogicalType::TUPLE(vector<LogicalType>())));
+
+		// every argument says its element in the pattern, and is passed as the pattern with it
+		selection = FunctionBinder::SelectFunction(*con.context, zip, {integers, strings});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("T") ==
+		        TypePack::Positional({LogicalType::INTEGER, LogicalType::VARCHAR}));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == integers);
+		REQUIRE(selection.GetBinding().layout.arguments[1].type == strings);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
+		        LogicalType::LIST(LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::VARCHAR})));
+
+		// an array is passed as a list, a NULL as it is, and a list of no type is a list of NULLs
+		selection =
+		    FunctionBinder::SelectFunction(*con.context, zip, {integer_array, LogicalType::SQLNULL, empty_list});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("T") ==
+		        TypePack::Positional({LogicalType::INTEGER, LogicalType::SQLNULL, LogicalType::SQLNULL}));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == integers);
+		REQUIRE(selection.GetBinding().layout.arguments[1].type == LogicalType::SQLNULL);
+		REQUIRE(selection.GetBinding().layout.arguments[2].type == empty_list);
+		REQUIRE(
+		    ReturnTypeOf(con, selection.GetBinding()) ==
+		    LogicalType::LIST(LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::SQLNULL, LogicalType::SQLNULL})));
+
+		// a call through the pattern ranks like the same call through ANY[]
+		auto through_any =
+		    FunctionBinder::SelectFunction(*con.context, any_lists, {integer_array, LogicalType::SQLNULL, empty_list});
+		REQUIRE(through_any.IsSuccess());
+		REQUIRE(selection.GetBinding().rank == through_any.GetBinding().rank);
+		selection = FunctionBinder::SelectFunction(*con.context, zip, {integers, strings});
+		through_any = FunctionBinder::SelectFunction(*con.context, any_lists, {integers, strings});
+		REQUIRE(selection.GetBinding().rank == through_any.GetBinding().rank);
+
+		// an argument that has no parts for the pattern says no element and cannot be passed
+		for (auto &other : {LogicalType(LogicalType::INTEGER), string_literal, LogicalType::VARIANT()}) {
+			selection = FunctionBinder::SelectFunction(*con.context, zip, {integers, other});
+			auto &mismatch = GetMismatches(selection)[0];
+			REQUIRE(mismatch.GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+			REQUIRE(mismatch.Cast<FunctionMismatch::IncompatibleArgument>().argument == 1);
+			REQUIRE_THAT(GetErrorMessage(selection), Catch::Contains("cannot be implicitly cast to T[]"));
+			through_any = FunctionBinder::SelectFunction(*con.context, any_lists, {integers, other});
+			REQUIRE(!through_any.IsSuccess());
+		}
+
+		// an unresolved parameter is an element nothing else says
+		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, zip, {integers, unknown}),
+		                    Catch::Contains("Parameter types could not be resolved"));
+
+		// "**kwargs": the element has the name of its argument as the label
+		vector<pair<Identifier, LogicalType>> named {{"a", integers}, {"b", strings}};
+		selection = FunctionBinder::SelectFunction(*con.context, tagged, FunctionCallArguments({}, named));
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("KV") ==
+		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
+		        LogicalType::STRUCT({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
+
+		// a variable next to the pack in the pattern is one type for all the arguments
+		const auto first_map = LogicalType::MAP(LogicalType::INTEGER, LogicalType::VARCHAR);
+		const auto second_map = LogicalType::MAP(LogicalType::BIGINT, LogicalType::DATE);
+		selection = FunctionBinder::SelectFunction(*con.context, keyed, {first_map, second_map});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.types.at("K") == LogicalType::BIGINT);
+		REQUIRE(selection.GetBinding().variables.packs.at("V") ==
+		        TypePack::Positional({LogicalType::VARCHAR, LogicalType::DATE}));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type ==
+		        LogicalType::MAP(LogicalType::BIGINT, LogicalType::VARCHAR));
+		REQUIRE(selection.GetBinding().layout.arguments[1].type == second_map);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::BIGINT);
+	});
+}
+
+TEST_CASE("A pack on a variadic parameter is the arguments it receives", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto t = TypeName::PACK("T");
+	// row(*args *T) -> TUPLE(*T), wrap(tuple TUPLE(*T)) -> TUPLE(*T)[]
+	ScalarFunctionSet row("row");
+	row.AddFunction(ScalarFunction(
+	    "row", FunctionSignature().AddPack("T").AddArgs("args", t).SetReturnType(TypeName::TUPLE({t})), NoopExec));
+	ScalarFunctionSet wrap("wrap");
+	wrap.AddFunction(ScalarFunction("wrap",
+	                                FunctionSignature()
+	                                    .AddPack("T")
+	                                    .AddParameter("tuple", TypeName::TUPLE({t}))
+	                                    .SetReturnType(TypeName::LIST(TypeName::TUPLE({t}))),
+	                                NoopExec));
+
+	// wrap(struct STRUCT(**KV)) -> STRUCT(**KV)[]
+	const TypeName named_struct(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")});
+	ScalarFunctionSet wrap_named("wrap");
+	wrap_named.AddFunction(ScalarFunction("wrap",
+	                                      FunctionSignature()
+	                                          .AddNamedPack("KV")
+	                                          .AddParameter("struct", named_struct)
+	                                          .SetReturnType(TypeName::LIST(named_struct)),
+	                                      NoopExec));
+
+	// pack(**kwargs **KV) -> STRUCT(**KV), insert(struct STRUCT(**KV), **kwargs **N)
+	ScalarFunctionSet pack("pack");
+	pack.AddFunction(ScalarFunction("pack",
+	                                FunctionSignature()
+	                                    .AddNamedPack("KV")
+	                                    .AddKwargs("kwargs", TypeName::NAMED_PACK("KV"))
+	                                    .SetReturnType(named_struct),
+	                                NoopExec));
+	ScalarFunctionSet insert("insert");
+	insert.AddFunction(ScalarFunction("insert",
+	                                  FunctionSignature()
+	                                      .AddNamedPack("KV")
+	                                      .AddNamedPack("N")
+	                                      .AddParameter("struct", named_struct)
+	                                      .AddKwargs("kwargs", TypeName::NAMED_PACK("N"))
+	                                      .SetReturnType(LogicalType::INTEGER),
+	                                  NoopExec));
+	// any(*args ANY)
+	ScalarFunctionSet any("any");
+	any.AddFunction(ScalarFunction(
+	    "any", FunctionSignature().AddArgs("args", LogicalType::ANY).SetReturnType(LogicalType::INTEGER), NoopExec));
+
+	const LogicalType string_literal(LogicalTypeId::STRING_LITERAL);
+	const auto integer_literal = LogicalType::INTEGER_LITERAL(Value::INTEGER(1));
+	const auto unknown = LogicalType(LogicalType::UNKNOWN);
+	const string unresolved_message = "Parameter types could not be resolved";
+
+	con.context->RunFunctionInTransaction([&]() {
+		// no argument: the pack of no elements
+		auto selection = FunctionBinder::SelectFunction(*con.context, row, {});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("T").Count() == 0);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::TUPLE(vector<LogicalType>()));
+
+		// every argument is one element, and is passed as it: a literal as its default type, a NULL as it is
+		selection = FunctionBinder::SelectFunction(*con.context, row, {LogicalType::BIGINT});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::BIGINT);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::TUPLE({LogicalType::BIGINT}));
+		selection =
+		    FunctionBinder::SelectFunction(*con.context, row, {integer_literal, string_literal, LogicalType::SQLNULL});
+		REQUIRE(selection.IsSuccess());
+		auto &elements = selection.GetBinding().variables.packs.at("T");
+		REQUIRE(elements == TypePack::Positional({LogicalType::INTEGER, LogicalType::VARCHAR, LogicalType::SQLNULL}));
+		for (idx_t i = 0; i < elements.Count(); i++) {
+			REQUIRE(selection.GetBinding().layout.arguments[i].type == elements.GetType(i));
+		}
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
+		        LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::VARCHAR, LogicalType::SQLNULL}));
+
+		// a call through a pack ranks like the same call through ANY
+		auto through_any =
+		    FunctionBinder::SelectFunction(*con.context, any, {integer_literal, string_literal, LogicalType::SQLNULL});
+		REQUIRE(through_any.IsSuccess());
+		REQUIRE(selection.GetBinding().rank == through_any.GetBinding().rank);
+		selection = FunctionBinder::SelectFunction(*con.context, row, {LogicalType::DATE, LogicalType::DOUBLE});
+		through_any = FunctionBinder::SelectFunction(*con.context, any, {LogicalType::DATE, LogicalType::DOUBLE});
+		REQUIRE(selection.GetBinding().rank == through_any.GetBinding().rank);
+
+		// an unresolved parameter is an element nothing else says
+		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, row, {LogicalType::INTEGER, unknown}),
+		                    Catch::Contains(unresolved_message));
+
+		// "**kwargs": the names of the arguments are the labels, in the order of the call
+		vector<pair<Identifier, LogicalType>> named {{"a", integer_literal}, {"b", LogicalType::VARCHAR}};
+		selection = FunctionBinder::SelectFunction(*con.context, pack, FunctionCallArguments({}, named));
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("KV") ==
+		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
+		        LogicalType::STRUCT({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
+		named = {{"b", LogicalType::VARCHAR}, {"a", LogicalType::SQLNULL}};
+		selection = FunctionBinder::SelectFunction(*con.context, pack, FunctionCallArguments({}, named));
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
+		        LogicalType::STRUCT({{"b", LogicalType::VARCHAR}, {"a", LogicalType::SQLNULL}}));
+		selection = FunctionBinder::SelectFunction(*con.context, pack, {});
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::STRUCT(child_list_t<LogicalType>()));
+		named = {{"a", LogicalType::INTEGER}, {"b", unknown}};
+		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, pack, FunctionCallArguments({}, named)),
+		                    Catch::Contains(unresolved_message));
+		// no overload takes a name twice
+		named = {{"a", LogicalType::INTEGER}, {"a", LogicalType::VARCHAR}};
+		selection = FunctionBinder::SelectFunction(*con.context, pack, FunctionCallArguments({}, named));
+		REQUIRE(!selection.IsSuccess());
+		REQUIRE(selection.GetError().GetType() == FunctionBindError::Type::DUPLICATE_ARGUMENT);
+
+		// two packs in one signature: the one of the struct and the one of the named arguments
+		const auto structure = LogicalType::STRUCT({{"a", LogicalType::INTEGER}});
+		named = {{"b", LogicalType::VARCHAR}};
+		selection = FunctionBinder::SelectFunction(*con.context, insert, FunctionCallArguments({structure}, named));
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.packs.at("KV") == TypePack::Named({{"a", LogicalType::INTEGER}}));
+		REQUIRE(selection.GetBinding().variables.packs.at("N") == TypePack::Named({{"b", LogicalType::VARCHAR}}));
+
+		// a pack the return type uses that no argument says is named as it is used
+		selection = FunctionBinder::SelectFunction(*con.context, wrap, {LogicalType::SQLNULL});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::TEMPLATE_UNRESOLVED);
+		REQUIRE_THAT(GetErrorMessage(selection), Catch::Contains("Cannot deduce template type '*T'"));
+		selection = FunctionBinder::SelectFunction(*con.context, wrap_named, {LogicalType::SQLNULL});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::TEMPLATE_UNRESOLVED);
+		REQUIRE_THAT(GetErrorMessage(selection), Catch::Contains("Cannot deduce template type '**KV'"));
+	});
+}

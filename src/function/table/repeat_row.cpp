@@ -75,7 +75,7 @@ static unique_ptr<NodeStatistics> RepeatRowCardinality(ClientContext &context, c
 void RepeatRowTableFunction::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction repeat_row("repeat_row", {}, RepeatRowFunction, RepeatRowBind, RepeatRowInit);
 	// a positional list, so it declares "*args" and no "**kwargs" - an argument named after no parameter is an error
-	repeat_row.GetSignature().AddArgs("args", LogicalType::ANY);
+	repeat_row.GetSignature().AddPack("T").AddArgs("args", TypeName::PACK("T"));
 	repeat_row.GetSignature().AddKeywordOnly("num_rows", LogicalType::BIGINT);
 	repeat_row.cardinality = RepeatRowCardinality;
 	repeat_row.table_scan_progress = RepeatRowProgress;

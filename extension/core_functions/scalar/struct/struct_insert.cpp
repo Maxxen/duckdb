@@ -105,9 +105,10 @@ static unique_ptr<ParsedExpression> StructInsertUnbind(FunctionUnbindInput &inpu
 
 ScalarFunction StructInsertFun::GetFunction() {
 	ScalarFunction fun(FunctionSignature()
-	                       .AddVariable("T", LogicalTypeId::STRUCT)
-	                       .AddParameter("struct", TypeName::VARIABLE("T"))
-	                       .AddKwargs("kwargs", LogicalType::ANY)
+	                       .AddNamedPack("KV")
+	                       .AddParameter("struct", TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")}))
+	                       .AddNamedPack("N")
+	                       .AddKwargs("kwargs", TypeName::NAMED_PACK("N"))
 	                       .SetReturnType(ReturnType::ANY(StructInsertReturnType)),
 	                   StructInsertFunction, VariableReturnBindData::Bind, StructInsertStats);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

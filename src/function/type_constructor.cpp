@@ -34,7 +34,8 @@ TypeConstructor TypeConstructor::Identity(Identifier name) {
 TypeConstructor TypeConstructor::Unchecked(Identifier name, bind_logical_type_function_t bind) {
 	// accepts anything, the bind function validates the arguments itself
 	auto signature = Signature();
-	signature.AddArgs("args", LogicalType::ANY).AddKwargs("kwargs", LogicalType::ANY);
+	signature.AddPack("T").AddArgs("args", TypeName::PACK("T"));
+	signature.AddNamedPack("KV").AddKwargs("kwargs", TypeName::NAMED_PACK("KV"));
 	return TypeConstructor(std::move(name), std::move(signature), bind);
 }
 
@@ -124,9 +125,9 @@ vector<TypeArgument> NormalizeArguments(const Identifier &type_name, const Funct
 		if (!bound.argument_index.IsValid()) {
 			// a parameter filled in from its default has no source text - point at the type instead
 			auto arg_name = ArgumentName(param.GetName(), bound.parameter_index);
-			result.emplace_back(
-			    param.GetName().GetIdentifierName(),
-			    CastArgument(type_name, arg_name, *param.GetDefaultValue(), bound.type, type_location), type_location);
+			result.emplace_back(param.GetName().GetIdentifierName(),
+			                    CastArgument(type_name, arg_name, *param.GetDefaultValue(), bound.type, type_location),
+			                    type_location);
 			continue;
 		}
 		// the positional arguments of the call come before the named ones, so this is the argument's index in the call

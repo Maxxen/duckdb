@@ -5,7 +5,7 @@
 statement error
 SELECT (ROW(42, 84))['element']
 ----
-cannot be used on an unnamed struct
+Could not convert string 'element' to INT64
 
 query I
 SELECT (ROW(42, 84))[1]

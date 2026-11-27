@@ -218,7 +218,8 @@ void EnableLoggingFun::RegisterFunction(BuiltinFunctions &set) {
 	auto enable_fun = TableFunction("enable_logging", {}, EnableLogging, BindEnableLogging, nullptr, nullptr);
 
 	enable_fun.GetSignature()
-	    .AddArgs("args", LogicalType::ANY)
+	    .AddPack("T")
+	    .AddArgs("args", TypeName::PACK("T"))
 	    .AddKeywordOnly("level", LogicalType::VARCHAR, Value("INFO"))
 	    .WithTypedKwargs("options", [](TypedKwargs &options) {
 		    options.Add("storage", LogicalType::VARCHAR)

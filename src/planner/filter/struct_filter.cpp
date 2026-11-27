@@ -19,7 +19,8 @@ unique_ptr<Expression> LegacyStructFilter::ToExpression(const Expression &column
 	arguments.push_back(column.Copy());
 	arguments.push_back(make_uniq<BoundConstantExpression>(Value::BIGINT(NumericCast<int64_t>(child_idx + 1))));
 
-	auto bound_func = FunctionBinder::BindScalarFunction(nullptr, GetExtractAtFunction(), arguments);
+	auto bound_func =
+	    FunctionBinder::BindScalarFunction(nullptr, GetExtractAtFunction(column.GetReturnType()), arguments);
 	bound_func.SetReturnType(StructType::GetChildType(column.GetReturnType(), child_idx));
 
 	auto child = make_uniq<BoundFunctionExpression>(std::move(bound_func), std::move(arguments),

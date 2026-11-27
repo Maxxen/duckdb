@@ -50,9 +50,12 @@ string FunctionMismatch::IncompatibleArgument::ToString(const SimpleFunction &fu
 	string parameter_name;
 	if (reads_as_declared) {
 		auto &signature = function.GetSignature();
-		auto &type_name = signature.GetParameter(parameter).GetTypeName();
-		auto constraint =
-		    type_name.HasArguments() ? LogicalTypeId::INVALID : signature.GetConstraint(type_name.GetName());
+		// an argument of a variadic parameter that is an expansion is passed as the pattern
+		auto &declared_name = signature.GetParameter(parameter).GetTypeName();
+		auto &type_name = declared_name.IsExpansion() ? declared_name.GetPattern() : declared_name;
+		// only a variable by itself can be constrained
+		const bool is_name = !type_name.HasArguments();
+		auto constraint = is_name ? signature.GetConstraint(type_name.GetName()) : LogicalTypeId::INVALID;
 		// a constrained type variable reads as the kind of type it stands for
 		parameter_name = constraint == LogicalTypeId::INVALID ? type_name.ToString() : EnumUtil::ToString(constraint);
 	} else {
@@ -95,7 +98,10 @@ string FunctionMismatch::TemplateUnresolved::ToString(const SimpleFunction &func
 	if (is_value) {
 		return StringUtil::Format("Cannot deduce value '%s', it is not determined by the arguments", template_name);
 	}
-	return StringUtil::Format("Cannot deduce template type '%s', it is not determined by the arguments", template_name);
+	// a pack is named as it is declared and used: '*T'
+	auto variable = function.GetSignature().FindVariable(Identifier(template_name));
+	return StringUtil::Format("Cannot deduce template type '%s', it is not determined by the arguments",
+	                          variable ? variable->ToString() : template_name);
 }
 
 string FunctionMismatch::ConstantRequired::ToString(const SimpleFunction &, const FunctionBindError &error) const {

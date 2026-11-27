@@ -22,9 +22,30 @@ static hash_t HashTypeName(const Identifier &name, const vector<TypeNameArgument
 	return hash;
 }
 
+//! The expansion of a pattern is another thing than the pattern, and than the pattern over the expansion: "*(T[])" is
+//! neither "T[]" nor "(*T)[]"
+static hash_t HashExpansion(TypeMultiplicity kind, const TypeName &pattern) {
+	if (kind == TypeMultiplicity::SINGLE) {
+		throw InternalException("The expansion of '%s' is positional or named", pattern.ToString());
+	}
+	return CombineHash(duckdb::Hash(pattern.Hash()), duckdb::Hash(static_cast<uint8_t>(kind)));
+}
+
 TypeNameNode::TypeNameNode(Identifier name_p, vector<TypeNameArgument> arguments_p, LogicalTypeId builtin_type_p)
-    : name(std::move(name_p)), arguments(std::move(arguments_p)), hash(HashTypeName(name, arguments)),
-      builtin_type(builtin_type_p) {
+    : hash(HashTypeName(name_p, arguments_p)),
+      value(Name {std::move(name_p), std::move(arguments_p), builtin_type_p}) {
+}
+
+TypeNameNode::TypeNameNode(TypeMultiplicity kind, TypeName pattern_p)
+    : hash(HashExpansion(kind, pattern_p)), value(Expansion {kind, std::move(pattern_p)}) {
+}
+
+void TypeNameNode::ThrowNotAName() const {
+	throw InternalException("An expansion is not a type name: it has a pattern, no name and no arguments");
+}
+
+void TypeNameNode::ThrowNotAnExpansion() const {
+	throw InternalException("Type name '%s' is not an expansion", GetName().name.GetIdentifierName());
 }
 
 //===--------------------------------------------------------------------===//
@@ -199,7 +220,7 @@ shared_ptr<const TypeNameNode> NameOfType(const LogicalType &type) {
 	if (arguments.empty()) {
 		return builtin_name;
 	}
-	return make_shared_ptr<const TypeNameNode>(builtin_name->name, std::move(arguments));
+	return make_shared_ptr<const TypeNameNode>(builtin_name->GetName().name, std::move(arguments));
 }
 
 } // namespace
@@ -238,6 +259,22 @@ TypeName TypeName::VARIABLE(const string &name) {
 	return TypeName(Identifier(name));
 }
 
+TypeName TypeName::PACK(const string &name) {
+	return EXPAND(VARIABLE(name));
+}
+
+TypeName TypeName::NAMED_PACK(const string &name) {
+	return EXPAND_NAMED(VARIABLE(name));
+}
+
+TypeName TypeName::EXPAND(TypeName pattern) {
+	return TypeName(make_shared_ptr<const TypeNameNode>(TypeMultiplicity::POSITIONAL_PACK, std::move(pattern)));
+}
+
+TypeName TypeName::EXPAND_NAMED(TypeName pattern) {
+	return TypeName(make_shared_ptr<const TypeNameNode>(TypeMultiplicity::NAMED_PACK, std::move(pattern)));
+}
+
 TypeName TypeName::LIST(TypeName child) {
 	return TypeName(Identifier("LIST"), {std::move(child)});
 }
@@ -274,27 +311,14 @@ TypeName TypeName::TUPLE(vector<TypeName> children) {
 	return TypeName(Identifier("TUPLE"), std::move(arguments));
 }
 
-const Identifier &TypeName::GetName() const {
-	return node->name;
-}
-
-const vector<TypeNameArgument> &TypeName::GetArguments() const {
-	return node->arguments;
-}
-
-bool TypeName::HasArguments() const {
-	return !node->arguments.empty();
-}
-
-LogicalTypeId TypeName::GetBuiltinType() const {
-	return node->builtin_type;
-}
-
 bool TypeName::Contains(const Identifier &name) const {
-	if (node->name == name) {
+	if (IsExpansion()) {
+		return GetPattern().Contains(name);
+	}
+	if (GetName() == name) {
 		return true;
 	}
-	for (auto &argument : node->arguments) {
+	for (auto &argument : GetArguments()) {
 		if (argument.IsType() && argument.GetType().Contains(name)) {
 			return true;
 		}
@@ -310,7 +334,15 @@ bool TypeName::operator==(const TypeName &other) const {
 	if (node == other.node) {
 		return true;
 	}
-	return node->hash == other.node->hash && node->name == other.node->name && node->arguments == other.node->arguments;
+	if (node->hash != other.node->hash || IsExpansion() != other.IsExpansion()) {
+		return false;
+	}
+	if (IsExpansion()) {
+		return GetExpansionKind() == other.GetExpansionKind() && GetPattern() == other.GetPattern();
+	}
+	auto &name = node->GetName();
+	auto &other_name = other.node->GetName();
+	return name.name == other_name.name && name.arguments == other_name.arguments;
 }
 
 bool TypeName::operator!=(const TypeName &other) const {
@@ -318,19 +350,32 @@ bool TypeName::operator!=(const TypeName &other) const {
 }
 
 string TypeName::ToString() const {
-	auto &name = node->name;
-	auto &arguments = node->arguments;
+	if (IsExpansion()) {
+		// written with its stars - around the pattern, unless that is a name by itself
+		auto &pattern = GetPattern();
+		const bool is_bare = !pattern.IsExpansion() && !pattern.HasArguments();
+		string stars = GetExpansionKind() == TypeMultiplicity::NAMED_PACK ? "**" : "*";
+		return is_bare ? stars + pattern.ToString() : stars + "(" + pattern.ToString() + ")";
+	}
+	auto &name = GetName();
+	auto &arguments = GetArguments();
 	if (arguments.empty()) {
-		// a built-in type prints as the type does
-		return node->builtin_type == LogicalTypeId::INVALID ? name.GetIdentifierName()
-		                                                    : LogicalType(node->builtin_type).ToString();
+		const auto builtin_type = GetBuiltinType();
+		if (builtin_type != LogicalTypeId::INVALID) {
+			// a built-in type prints as the type does
+			return LogicalType(builtin_type).ToString();
+		}
+		return name.GetIdentifierName();
 	}
-	// LIST and ARRAY are written as a suffix of their element
-	if (name == "LIST" && arguments.size() == 1) {
-		return arguments[0].ToString() + "[]";
-	}
-	if (name == "ARRAY" && arguments.size() == 2) {
-		return arguments[0].ToString() + "[" + arguments[1].ToString() + "]";
+	// LIST and ARRAY are written as a suffix of their element - in parentheses if the element is an expansion, which
+	// the suffix is not part of
+	const bool is_list = name == "LIST" && arguments.size() == 1;
+	if (is_list || (name == "ARRAY" && arguments.size() == 2)) {
+		auto element = arguments[0].ToString();
+		if (arguments[0].IsType() && arguments[0].GetType().IsExpansion()) {
+			element = "(" + element + ")";
+		}
+		return is_list ? element + "[]" : element + "[" + arguments[1].ToString() + "]";
 	}
 	// a DECIMAL is written without a space, as the type prints
 	auto separator = name == "DECIMAL" ? "," : ", ";

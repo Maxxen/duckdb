@@ -44,23 +44,6 @@ static void StructPackFunction(DataChunk &args, ExpressionState &state, Vector &
 	result.Verify();
 }
 
-//! The struct of the arguments: struct_pack names its fields after them, row leaves them unnamed
-template <bool IS_STRUCT_PACK>
-static LogicalType StructPackReturnType(const ResolveReturnTypeInput &input) {
-	if (IS_STRUCT_PACK) {
-		child_list_t<LogicalType> fields;
-		for (idx_t i = 0; i < input.GetArgumentCount(); i++) {
-			fields.emplace_back(input.GetArgumentName(i), input.GetArgumentType(i));
-		}
-		return LogicalType::STRUCT(std::move(fields));
-	}
-	vector<LogicalType> fields;
-	for (idx_t i = 0; i < input.GetArgumentCount(); i++) {
-		fields.push_back(input.GetArgumentType(i));
-	}
-	return LogicalType::TUPLE(std::move(fields));
-}
-
 static unique_ptr<BaseStatistics> StructPackStats(ClientContext &context, FunctionStatisticsInput &input) {
 	auto &child_stats = input.child_stats;
 	auto &expr = input.expr;
@@ -92,11 +75,12 @@ static ScalarFunction GetStructPackFunction() {
 	// expression's name as the field name). row produces an unnamed TUPLE, so it ignores the names of its arguments
 	FunctionSignature signature;
 	if (IS_STRUCT_PACK) {
-		signature.AddKwargs("kwargs", LogicalType::ANY);
+		signature.AddNamedPack("KV").AddKwargs("kwargs", TypeName::NAMED_PACK("KV"));
+		signature.SetReturnType(TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")}));
 	} else {
-		signature.AddArgs("args", LogicalType::ANY);
+		signature.AddPack("T").AddArgs("args", TypeName::PACK("T"));
+		signature.SetReturnType(TypeName::TUPLE({TypeName::PACK("T")}));
 	}
-	signature.SetReturnType(ReturnType::ANY(StructPackReturnType<IS_STRUCT_PACK>));
 	ScalarFunction fun(IS_STRUCT_PACK ? "struct_pack" : "row", std::move(signature), StructPackFunction,
 	                   VariableReturnBindData::Bind, StructPackStats);
 	if (IS_STRUCT_PACK) {

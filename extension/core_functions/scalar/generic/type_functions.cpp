@@ -142,7 +142,8 @@ ScalarFunction MakeTypeFun::GetFunction() {
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetBindExpressionCallback(BindMakeTypeFunctionExpression);
 	fun.GetProperties().SetRequiresExpressionNames(true);
-	fun.GetSignature().AddArgs("args", LogicalType::ANY).AddKwargs("kwargs", LogicalType::ANY);
+	fun.GetSignature().AddPack("T").AddArgs("args", TypeName::PACK("T"));
+	fun.GetSignature().AddNamedPack("KV").AddKwargs("kwargs", TypeName::NAMED_PACK("KV"));
 	return fun;
 }
 

@@ -38,6 +38,7 @@ add_library_unity(
   table_function.cpp
   type_cache.cpp
   type_name.cpp
+  type_pack.cpp
   type_constructor.cpp
   window_function.cpp
   copy_blob.cpp)

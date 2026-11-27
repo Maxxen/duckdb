@@ -333,9 +333,10 @@ unique_ptr<BaseStatistics> ListConcatStats(ClientContext &context, FunctionStati
 } // namespace
 
 ScalarFunction ListConcatFun::GetFunction() {
-	// The arguments and return types are set in the binder function.
+	// every argument is a list of its own type: the type the lists are concatenated as is set in the binder function
 	auto fun = ScalarFunction(FunctionSignature()
-	                              .AddArgs("args", LogicalType::LIST(LogicalType::ANY))
+	                              .AddPack("T")
+	                              .AddArgs("args", TypeName::EXPAND(TypeName::LIST(TypeName::VARIABLE("T"))))
 	                              .SetReturnType(ReturnType::ANY(ConcatReturnType<ConcatKind::LIST_CONCAT>)),
 	                          ConcatFunction, BindConcatFunction, ListConcatStats);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
@@ -355,7 +356,8 @@ ScalarFunction ConcatFun::GetFunction() {
 	                      FunctionSignature()
 	                          .AddVariable("T")
 	                          .AddParameter("value", TypeName::VARIABLE("T"))
-	                          .AddArgs("args", LogicalType::ANY)
+	                          .AddPack("A")
+	                          .AddArgs("args", TypeName::PACK("A"))
 	                          .SetReturnType(ReturnType::ANY(ConcatReturnType<ConcatKind::CONCAT>)),
 	                      ConcatFunction, BindConcatFunction);
 	concat.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

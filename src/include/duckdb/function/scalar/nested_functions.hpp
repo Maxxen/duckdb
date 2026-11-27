@@ -89,6 +89,7 @@ struct HistogramAggState {
 
 ScalarFunction GetKeyExtractFunction();
 ScalarFunction GetIndexExtractFunction();
-ScalarFunction GetExtractAtFunction();
+//! The overload of struct_extract_at that takes a struct of the given type: with names, or a tuple
+ScalarFunction GetExtractAtFunction(const LogicalType &struct_type);
 
 } // namespace duckdb

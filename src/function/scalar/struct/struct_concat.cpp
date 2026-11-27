@@ -91,10 +91,12 @@ static unique_ptr<BaseStatistics> StructConcatStats(ClientContext &context, Func
 }
 
 ScalarFunction StructConcatFun::GetFunction() {
-	ScalarFunction fun(
-	    "struct_concat",
-	    FunctionSignature().AddArgs("args", LogicalType::ANY).SetReturnType(ReturnType::ANY(StructConcatReturnType)),
-	    StructConcatFunction, nullptr, StructConcatStats);
+	ScalarFunction fun("struct_concat",
+	                   FunctionSignature()
+	                       .AddPack("T")
+	                       .AddArgs("args", TypeName::PACK("T"))
+	                       .SetReturnType(ReturnType::ANY(StructConcatReturnType)),
+	                   StructConcatFunction, nullptr, StructConcatStats);
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	return fun;
 }

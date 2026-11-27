@@ -134,12 +134,18 @@ struct FunctionParameters {
 };
 
 //! A variable a signature declares, written foo<T, N: INTEGER>(x T[N]). A type variable stands for a type the
-//! arguments of a call determine, an integer or string variable for a value, e.g. the size of an array
+//! arguments of a call determine, an integer or string variable for a value, e.g. the size of an array.
+//! A pack stands for any number of them, written like the variadic parameters of a function: foo<*T>(x TUPLE(*T))
+//! for the types of a tuple in order, foo<**KV>(x STRUCT(**KV)) for the labelled types of a struct
 class TypeVariable {
 public:
 	enum class Kind : uint8_t { TYPE = 0, INTEGER, STRING };
+	//! How many types (or values) the variable stands for - a type name that uses it says the same, see TypeName
+	using Multiplicity = TypeMultiplicity;
 
-	explicit TypeVariable(Identifier name_p, Kind kind_p = Kind::TYPE) : name(std::move(name_p)), kind(kind_p) {
+	explicit TypeVariable(Identifier name_p, Kind kind_p = Kind::TYPE,
+	                      Multiplicity multiplicity_p = Multiplicity::SINGLE)
+	    : name(std::move(name_p)), kind(kind_p), multiplicity(multiplicity_p) {
 	}
 	auto GetName() const -> const Identifier & {
 		return name;
@@ -147,11 +153,19 @@ public:
 	auto GetKind() const -> Kind {
 		return kind;
 	}
+	auto GetMultiplicity() const -> Multiplicity {
+		return multiplicity;
+	}
 	//! Whether the variable stands for a value rather than a type
 	auto IsValue() const -> bool {
 		return kind != Kind::TYPE;
 	}
+	//! Whether the variable stands for any number of types (or values) rather than one
+	auto IsPack() const -> bool {
+		return multiplicity != Multiplicity::SINGLE;
+	}
 
+	//! The variable as a signature declares it: "T", "N: INTEGER", "*T", "**KV"
 	DUCKDB_API string ToString() const;
 	DUCKDB_API bool operator==(const TypeVariable &other) const;
 	DUCKDB_API bool operator!=(const TypeVariable &other) const;
@@ -159,6 +173,7 @@ public:
 private:
 	Identifier name;
 	Kind kind;
+	Multiplicity multiplicity;
 };
 
 //! A constraint a signature declares on a type variable, written WHERE T IS STRUCT: the variable only stands for
@@ -510,6 +525,12 @@ public:
 		AddVariable(name);
 		return AddConstraint(std::move(name), constraint);
 	}
+	//! Declares a pack of types "*name": the types a type takes in order, e.g. those of TUPLE(*T), or the types of
+	//! the arguments "*args" receives. A type name uses it as TypeName::PACK(name)
+	DUCKDB_API auto AddPack(Identifier name) -> FunctionSignature &;
+	//! Declares a pack of labelled types "**name": the types a type takes by name, e.g. those of STRUCT(**KV), or
+	//! the types of the arguments "**kwargs" receives. A type name uses it as TypeName::NAMED_PACK(name)
+	DUCKDB_API auto AddNamedPack(Identifier name) -> FunctionSignature &;
 	//! Constrains a type variable to types of a kind
 	DUCKDB_API auto AddConstraint(Identifier variable, LogicalTypeId kind) -> FunctionSignature &;
 	//! Whether a type of this signature takes an argument of any type as it is: ANY, or an unconstrained type variable
@@ -650,6 +671,12 @@ public:
 	hash_t Hash() const;
 
 private:
+	//! Declares a variable, or finds it declared the same way already
+	auto DeclareVariable(Identifier name, TypeVariable::Kind kind, TypeVariable::Multiplicity multiplicity)
+	    -> FunctionSignature &;
+	//! Checks how the types of the signature use its variables, see Verify
+	void VerifyVariableUses() const;
+
 private:
 	vector<FunctionParameter> parameters;
 	shared_ptr<TypedKwargs> typed_kwargs; // optional "schema" for the accepted **kwargs

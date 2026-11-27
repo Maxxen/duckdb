@@ -1511,7 +1511,8 @@ ScalarFunction CreateSortKeyFun::GetFunction() {
 	                                 FunctionSignature()
 	                                     .AddVariable("T")
 	                                     .AddPositionalOnly("key1", TypeName::VARIABLE("T"))
-	                                     .AddArgs("args", LogicalType::ANY)
+	                                     .AddPack("A")
+	                                     .AddArgs("args", TypeName::PACK("A"))
 	                                     .SetReturnType(ReturnType::ANY(CreateSortKeyReturnType)),
 	                                 CreateSortKeyFunction, CreateSortKeyBind);
 	sort_key_function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);

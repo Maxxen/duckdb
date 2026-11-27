@@ -314,8 +314,9 @@ void IndexKeyFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 
 ScalarFunction IndexKeyFun::GetFunction() {
 	ScalarFunction fun("index_key", {}, LogicalType::BLOB, IndexKeyFunction, IndexKeyBind);
-	fun.GetSignature().AddVariable("T", LogicalTypeId::STRUCT).AddParameter("path", TypeName::VARIABLE("T"));
-	fun.GetSignature().AddArgs("args", LogicalTypeId::ANY);
+	fun.GetSignature().AddNamedPack("KV").AddParameter("path",
+	                                                   TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")}));
+	fun.GetSignature().AddPack("T").AddArgs("args", TypeName::PACK("T"));
 	return fun;
 }
 

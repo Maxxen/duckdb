@@ -167,7 +167,8 @@ ScalarFunctionSet WriteLogFun::GetFunctions() {
 
 	ScalarFunction fun(FunctionSignature()
 	                       .AddParameter("string", LogicalType::VARCHAR)
-	                       .AddKwargs("kwargs", LogicalType::ANY)
+	                       .AddNamedPack("KV")
+	                       .AddKwargs("kwargs", TypeName::NAMED_PACK("KV"))
 	                       .SetReturnType(ReturnType::ANY(WriteLogReturnType)),
 	                   WriteLogFunction, WriteLogBind, nullptr, nullptr, FunctionStability::VOLATILE);
 	fun.GetProperties().SetRequiresExpressionNames(true);

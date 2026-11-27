@@ -58,18 +58,13 @@ static void StructKeysFunction(DataChunk &args, ExpressionState &state, Vector &
 }
 
 static unique_ptr<FunctionData> StructKeysBind(BindScalarFunctionInput &input) {
-	auto &arguments = input.GetArguments();
-	const auto &return_type = arguments[0]->GetReturnType();
-	if (return_type.id() != LogicalTypeId::STRUCT) {
-		throw InvalidInputException("struct_keys() expects a STRUCT argument");
-	}
-	return make_uniq<StructKeysBindData>(arguments[0]->GetReturnType());
+	return make_uniq<StructKeysBindData>(input.GetArguments()[0]->GetReturnType());
 }
 
 ScalarFunction StructKeysFun::GetFunction() {
 	ScalarFunction func(FunctionSignature()
-	                        .AddVariable("T", LogicalTypeId::STRUCT)
-	                        .AddParameter("struct", TypeName::VARIABLE("T"))
+	                        .AddNamedPack("KV")
+	                        .AddParameter("struct", TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")}))
 	                        .SetReturnType(LogicalType::LIST(LogicalType::VARCHAR)),
 	                    StructKeysFunction, StructKeysBind);
 	return func;

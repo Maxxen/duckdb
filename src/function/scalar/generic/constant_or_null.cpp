@@ -93,7 +93,8 @@ ScalarFunction ConstantOrNullFun::GetFunction() {
 	                       .AddVariable("U")
 	                       .AddParameter("arg1", TypeName::VARIABLE("T"))
 	                       .AddParameter("arg2", TypeName::VARIABLE("U"))
-	                       .AddArgs("args", LogicalType::ANY)
+	                       .AddPack("A")
+	                       .AddArgs("args", TypeName::PACK("A"))
 	                       .SetReturnType(TypeName::VARIABLE("T")),
 	                   ConstantOrNullFunction, ConstantOrNullBind);
 	return fun;

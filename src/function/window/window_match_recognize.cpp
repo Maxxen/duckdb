@@ -1159,7 +1159,8 @@ WindowFunction MatchRecognizeFun::GetFunction() {
 	                   FunctionSignature()
 	                       .AddVariable("T")
 	                       .AddParameter("columns", TypeName::VARIABLE("T"), Value())
-	                       .AddArgs("args", LogicalType::ANY)
+	                       .AddPack("A")
+	                       .AddArgs("args", TypeName::PACK("A"))
 	                       .SetReturnType(WindowMatchRecognizeExecutor::ResultType()),
 	                   ExpressionType::WINDOW_FUNCTION, WindowMatchRecognizeExecutor::Bind,
 	                   WindowMatchRecognizeExecutor::GetBounds, WindowMatchRecognizeExecutor::GetSharing,
