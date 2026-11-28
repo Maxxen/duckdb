@@ -32,8 +32,7 @@ static hash_t HashExpansion(TypeMultiplicity kind, const TypeName &pattern) {
 }
 
 TypeNameNode::TypeNameNode(Identifier name_p, vector<TypeNameArgument> arguments_p, LogicalTypeId builtin_type_p)
-    : hash(HashTypeName(name_p, arguments_p)),
-      value(Name {std::move(name_p), std::move(arguments_p), builtin_type_p}) {
+    : hash(HashTypeName(name_p, arguments_p)), value(Name {std::move(name_p), std::move(arguments_p), builtin_type_p}) {
 }
 
 TypeNameNode::TypeNameNode(TypeMultiplicity kind, TypeName pattern_p)

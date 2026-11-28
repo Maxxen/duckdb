@@ -85,16 +85,29 @@ private:
 	vector<Element> elements;
 };
 
-//! What a call determines the variables of a signature to be
+//! What a call determines a variable of a signature to be: the type of a type variable - normalized, of the kind of
+//! a constrained variable, and SQLNULL if only NULLs are passed as it - the value of a value variable, a NULL of its
+//! values if only NULLs say it, or the elements of a pack
+using FunctionVariable = std::variant<LogicalType, Value, TypePack>;
+
+//! What a call determines the variables of a signature to be, by their names. A variable it does not determine is
+//! not in it
 struct FunctionVariables {
-	//! The types of the type variables: normalized, and of the kind of a constrained variable. SQLNULL if only NULLs
-	//! are passed as one
-	case_insensitive_map_t<LogicalType> types;
-	//! The values of the value variables. NULL if the arguments that determine one say nothing, as an unresolved
-	//! parameter does
-	case_insensitive_map_t<Value> values;
-	//! The types of the packs
-	case_insensitive_map_t<TypePack> packs;
+	bool IsDetermined(const Identifier &name) const {
+		return determined.count(name) > 0;
+	}
+	//! What a variable the call determines is - it has to be a variable of that kind
+	const LogicalType &GetType(const Identifier &name) const {
+		return std::get<LogicalType>(determined.at(name));
+	}
+	const Value &GetValue(const Identifier &name) const {
+		return std::get<Value>(determined.at(name));
+	}
+	const TypePack &GetPack(const Identifier &name) const {
+		return std::get<TypePack>(determined.at(name));
+	}
+
+	identifier_map_t<FunctionVariable> determined;
 };
 
 //! An argument a function is bound with
@@ -158,32 +171,41 @@ struct ArgumentLayout {
 //!    them: a struct with names says nothing about TUPLE(*T) and cannot be passed to it, nor a tuple to
 //!    STRUCT(**KV), like a list. A struct or a tuple that has no parts says the pack of no elements for either:
 //!    it is cast to the other kind, which costs 1, so an overload of its own kind is preferred. A NULL has no
-//!    types to say: the pack is not determined. A pack that the type of a variadic parameter expands is the
-//!    arguments the parameter receives, one element each: for row(*args *T), T is the types of the arguments, a
+//!    types to say: a pack that only a NULL is passed as is the pack of no elements, so a pack is always
+//!    determined, and the NULL is passed as the struct or tuple without parts. A pack that the type of a variadic
+//!    parameter expands is the arguments it receives, one element each: for row(*args *T), T is their types, a
 //!    literal as its type and a NULL as the type of a NULL, and for struct_pack(**kwargs **KV) each with the name
 //!    of its argument as its label. Where a pattern is expanded, every argument is matched against the pattern and
 //!    the element is what it says the pack is there: for list_zip(*lists *(T[])), T is the element types of the
 //!    lists, and each list is passed as a list of its own element type. An argument that has no parts for the
 //!    pattern says no element and cannot be passed. Without an argument it is the pack of no elements. The
-//!    function still receives its arguments one by one. An overload is not a
-//!    candidate if the arguments disagree about a variable, or promote a constrained variable out of its kind (two
-//!    enums are promoted to VARCHAR). A variable that is left to an unresolved parameter - a type variable, ANY, a
+//!    function still receives its arguments one by one. In the return type a named pack can be used without its labels:
+//!    a function declared (s STRUCT(**KW)) -> TUPLE(*KW) returns the tuple of the types of the fields. An overload is
+//!    not a candidate if the arguments disagree about a variable, or promote a constrained variable out of its kind
+//!    (two enums are promoted to VARCHAR). A variable that is left to an unresolved parameter - a type variable, ANY, a
 //!    value variable or a pack that the parameter is passed as, and that no other argument says - leaves the call
 //!    unresolved (step 4). Every argument is then passed as the type of its parameter with the variables as the
-//!    arguments determine them, and has to be passable to it:
-//!    - It has to fit the pattern of the parameter, which is the type of the parameter with every variable left
-//!      open: it casts implicitly to the pattern with its own parts in the place of the variables. INTEGER[3] fits
-//!      T[] as INTEGER[], INTEGER fits DECIMAL(W, S) as DECIMAL(10, 0), anything fits a type variable by itself, and
-//!      for a type that uses no variable the pattern is the type. The cast from there to the type the argument is
-//!      passed as is explicit - no implicit cast to that type is asked for: BOOLEAN and INTEGER fit (T, T), and
-//!      both are passed as INTEGER. A setting could ask for that implicit cast as well.
-//!    - An argument that has no parts for the pattern of a type with arguments (T[], DECIMAL(W, S), FLOAT[N]) has
-//!      to cast implicitly to the type it is passed as. A VARIANT and a string literal are passed to T[] this way.
-//!      There is no such way to a type variable or a value variable by itself.
-//!    - A NULL and an unresolved parameter are passed as the type of the parameter - a NULL as it is, if a variable
-//!      of that type is not determined.
-//!    An overload is not a candidate if a variable is not determined that the return type uses, or the type that
-//!    an argument is passed as.
+//!    arguments determine them, and has to be passable to it. The pairing says whether an argument fits the type
+//!    of its parameter: every part of the one is paired with a part of the other - a type variable with a type it
+//!    stands for, a value variable with a value, a pack with all the parts, and a value the parameter gives with
+//!    that value. INTEGER[3] fits T[] and T[N], INTEGER fits DECIMAL(W, S) as DECIMAL(10, 0), and anything fits an
+//!    unconstrained type variable by itself. A VARIANT, a string literal and a MAP do not fit T[], nor INTEGER[]
+//!    T[N], nor a tuple of three TUPLE(K, V).
+//!    - An argument that fits a type that uses a type variable is cast explicitly to the type it is passed as - no
+//!      implicit cast to that type is asked for: BOOLEAN and INTEGER fit (T, T), and both are passed as INTEGER. A
+//!      setting could ask for that implicit cast as well.
+//!    - An argument that does not fit such a type has to cast implicitly to the type it is passed as. A VARIANT and
+//!      a string literal are passed to T[] this way. There is no such way to a type variable by itself: a type that
+//!      a constrained variable does not stand for cannot be passed as it.
+//!    - An argument has to cast implicitly to a type that uses no type variable (INTEGER, DECIMAL(W, S), FLOAT[N]),
+//!      which is that type whatever the other arguments are.
+//!    - A NULL and an unresolved parameter are passed as the type of the parameter - a NULL as it is, if that type
+//!      cannot be made, e.g. of a value variable that only NULLs say. An argument that fits a type that the
+//!      constructor does not make is passed as it is as well: it is that type already.
+//!    - A parameter that is declared as ANY takes the type of its argument.
+//!    An overload is not a candidate if no argument says what a variable is: an argument that has no parts for the
+//!    type of its parameter cannot be passed. The type the overload returns is made of the variables once it is
+//!    selected: a call whose return type cannot be made is an error, e.g. FLOAT[N] where only NULLs say N.
 //!
 //! 3. Rank. Every candidate has a rank of six numbers. Two candidates are compared number by number in the order of
 //!    the rules below, and the first difference decides:
@@ -192,8 +214,8 @@ struct ArgumentLayout {
 //!    2. unconstrained_arguments, fewer is better: the arguments, other than a NULL, that are passed to a parameter
 //!       whose type uses an unconstrained type variable. A pack counts as one here and in rules 4 and 5.
 //!    3. cast_cost, lower is better: the sum of the implicit cast costs of the arguments. An argument costs the
-//!       implicit cast of step 2: to the pattern with its own parts, which is 0 for its own type, or - without
-//!       parts for it - to the type it is passed as. A NULL costs the cast of a NULL to the type it is passed as.
+//!       implicit cast to the type it is passed as - and nothing if it is cast explicitly (step 2) and there is no
+//!       implicit cast to that type. A NULL costs the cast of a NULL to the type it is passed as.
 //!       That is the type of a NULL if a type variable is passed nothing else, constrained or not: nothing is
 //!       taken from the constraint. A NULL that is passed as it is costs the cast to the type the parameter names
 //!       (FLOAT[N] an array, GEOMETRY(C) a geometry, TUPLE(*T) a tuple).
@@ -286,8 +308,8 @@ struct FunctionBinding {
 	FunctionRank rank;
 	//! The arguments the function is bound with
 	ArgumentLayout layout;
-	//! What the call determines the variables of the overload to be: the type of every type variable, and the
-	//! value of every value variable. The return type follows from them
+	//! What the call determines the variables of the overload to be: the type of a type variable, the value of a
+	//! value variable, the elements of a pack. The return type follows from them
 	FunctionVariables variables;
 
 private:

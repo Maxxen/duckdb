@@ -344,32 +344,20 @@ LogicalType BindDefaultGeographyType(BindLogicalTypeInput &input) {
 }
 
 static LogicalType BindGeoType(BindLogicalTypeInput &input, bool geography) {
-	const char *type_name = geography ? "GEOGRAPHY" : "GEOMETRY";
-
 	// FIXME: Use extension/ClientContext to expand incomplete/shorthand CRS definitions
 	auto &crs = StringValue::Get(input.modifiers[0].GetValue());
 
-	if (!input.context) {
-		throw BinderException(input.query_location, "Cannot create %s type with coordinate system without a connection",
-		                      type_name);
+	unique_ptr<CoordinateReferenceSystem> crs_result;
+	if (input.context) {
+		crs_result = CoordinateReferenceSystem::TryIdentify(*input.context, crs);
 	}
-
-	const auto crs_result = CoordinateReferenceSystem::TryIdentify(*input.context, crs);
 	if (!crs_result) {
-		if (Settings::Get<IgnoreUnknownCrsSetting>(*input.context)) {
+		if (input.context && Settings::Get<IgnoreUnknownCrsSetting>(*input.context)) {
 			// Ignored by user configuration - return generic GEOMETRY/GEOGRAPHY type
 			return BindDefaultGeoType(geography);
 		}
-
-		throw BinderException(
-		    input.GetLocation(0),
-		    "Encountered unrecognized coordinate system '%s' when trying to create %s type\n"
-		    "The coordinate system definition may be incomplete or invalid. Your options are as follows:\n"
-		    "* Load an extension that can identify this coordinate system\n"
-		    "* Provide a full coordinate system definition in e.g. \"PROJJSON\" or \"WKT2\" format\n"
-		    "* Set the 'ignore_unknown_crs' configuration option to drop the coordinate system from the resulting "
-		    "type and make this error go away",
-		    crs, type_name);
+		// A coordinate system that is not identified is kept as it is given
+		return geography ? LogicalType::GEOGRAPHY(crs) : LogicalType::GEOMETRY(crs);
 	}
 
 	return geography ? LogicalType::GEOGRAPHY(crs_result->GetDefinition())

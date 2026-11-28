@@ -55,6 +55,29 @@ select st_crs(st_setcrs('POINT(0 1)', 'EPSG:4326'));
 ----
 EPSG:4326
 
+# is kept as it is given, also by the type
+query II
+select typeof(NULL::GEOMETRY('EPSG:4326')), typeof(NULL::GEOGRAPHY('FOO'));
+----
+GEOMETRY('EPSG:4326')	GEOGRAPHY('FOO')
+
+query II
+select st_crs('POINT(0 1)'::GEOMETRY('FOO')), st_crs(st_setcrs('POINT(0 1)'::GEOGRAPHY, 'FOO'));
+----
+FOO	FOO
+
+# unless the session ignores it
+statement ok
+set ignore_unknown_crs=true;
+
+query I
+select typeof(NULL::GEOMETRY('FOO'));
+----
+GEOMETRY
+
+statement ok
+reset ignore_unknown_crs;
+
 statement ok
 create table t1 (g GEOMETRY('OGC:CRS84'));
 

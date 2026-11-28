@@ -49,6 +49,12 @@ static bool CombineStructTypes(LogicalTypeResolver &logical_type_resolver, const
 	auto is_unnamed = left_unnamed || right_unnamed;
 	child_list_t<LogicalType> child_types;
 
+	// an empty tuple or struct is the identity: the result is the other side
+	if (left_children.empty() != right_children.empty()) {
+		result = left_children.empty() ? right : left;
+		return true;
+	}
+
 	// At least one side is unnamed, so we attempt positional casting.
 	if (is_unnamed) {
 		if (left_children.size() != right_children.size()) {

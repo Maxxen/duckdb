@@ -1465,9 +1465,12 @@ TEST_CASE("V2: GEOMETRY with a coordinate system constructs and inspects",
 TEST_CASE("V2: GEOMETRY with an unknown coordinate system", "[capi_v2][logical_type][create][geometry]") {
 	EnvFixture f;
 
-	// A well-formed shorthand outside the default entries fails the bind.
-	REQUIRE(MakeTypeErr(f.factory, "geometry", nullptr, {MakeVarcharValue(f.factory, "EPSG:4326")}) ==
-	        DUCKDB_V2_ERROR_QUERY_BINDER);
+	// A well-formed shorthand outside the default entries is kept as it is given.
+	auto unknown = MakeType(f.factory, "geometry", nullptr, {MakeVarcharValue(f.factory, "EPSG:4326")});
+	REQUIRE(V2TypeIdOf(unknown) == DUCKDB_V2_LOGICAL_TYPE_ID_GEOMETRY);
+	REQUIRE(V2ParamCount(unknown) == 1);
+	REQUIRE(V2ParamVarchar(unknown, 0, nullptr) == "EPSG:4326");
+	duckdb_v2_logical_type_destroy(&unknown);
 
 	// ignore_unknown_crs degrades to the generic GEOMETRY type instead.
 	ExecSQL(f.conn, "SET ignore_unknown_crs = true");

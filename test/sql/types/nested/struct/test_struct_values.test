@@ -19,6 +19,12 @@ select struct_values(NULL);
 ----
 NULL
 
+# an untyped NULL says no fields: it is the NULL of a struct without fields, whose values are a tuple without elements
+query I
+select typeof(struct_values(NULL));
+----
+TUPLE
+
 # Constant vector as input (same result for every row)
 query I
 SELECT struct_values({a: 1, b: 'y'}) FROM range(3);

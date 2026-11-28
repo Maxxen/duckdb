@@ -538,6 +538,10 @@ public:
 	//! Whether the signature declares a return type that is complete as it is: a type that uses none of the variables
 	//! of the signature and no ANY, so that it is the same for every call
 	DUCKDB_API bool HasCompleteReturnType() const;
+	//! Whether the signature declares a return type that every call determines: one that is complete but for its
+	//! packs. A pack is there whatever is passed - without elements if only a NULL is passed as it - while a type or
+	//! value variable is what the arguments say it is
+	DUCKDB_API bool HasDeterminedReturnType() const;
 	//! Whether a type of this signature and a type of another one declare the same type
 	DUCKDB_API bool IsSameType(const TypeName &type, const FunctionSignature &other, const TypeName &other_type) const;
 

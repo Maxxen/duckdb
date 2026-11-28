@@ -49,7 +49,8 @@ public:
 	//! The name of a variable of a signature, which the signature declares: FunctionSignature::AddVariable
 	DUCKDB_API static TypeName VARIABLE(const string &name);
 	//! The use of a pack of a signature, "*name": the types it stands for in order, FunctionSignature::AddPack. It is
-	//! the expansion of the pack by itself, EXPAND(VARIABLE(name))
+	//! the expansion of the pack by itself, EXPAND(VARIABLE(name)). In a return type the pack can be a named one:
+	//! its types without their labels
 	DUCKDB_API static TypeName PACK(const string &name);
 	//! The use of a named pack of a signature, "**name": its labelled types, FunctionSignature::AddNamedPack
 	DUCKDB_API static TypeName NAMED_PACK(const string &name);

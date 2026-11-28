@@ -782,8 +782,11 @@ unique_ptr<Expression> FunctionBinder::BindScalarFunction(const ScalarFunctionCa
 		// whether the function declares a type that is the same whatever the arguments are
 		const bool has_complete_return_type = bound_function.GetSignature().HasCompleteReturnType();
 		if (HasUntypedNullArgument(regular_args, keyword_args)) {
+			// the type the function declares, if every call determines it: a NULL does not say what a variable is,
+			// but a pack is there without it
+			const bool has_return_type = bound_function.GetSignature().HasDeterminedReturnType();
 			auto null_type =
-			    has_complete_return_type ? BindReturnType(GetTypeCache(), binding) : LogicalType(LogicalType::SQLNULL);
+			    has_return_type ? BindReturnType(GetTypeCache(), binding) : LogicalType(LogicalType::SQLNULL);
 			return make_uniq<BoundConstantExpression>(Value(std::move(null_type)), std::move(alias), query_location);
 		}
 		if (HasNullConstantArgument(context, regular_args, keyword_args, binder)) {

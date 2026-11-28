@@ -575,7 +575,7 @@ unique_ptr<FunctionData> WindowLeadLagExecutor::Bind(BindWindowFunctionInput &in
 	return nullptr;
 }
 
-static WindowFunction GetLeadLagFunction(const char *name, const ExpressionType &type) {
+static WindowFunction GetLeadLagFunction(const char *name, const ExpressionType &type, FunctionSignature signature) {
 	const auto bind = WindowLeadLagExecutor::Bind;
 	const auto bounds = WindowLeadLagLocalState::GetBounds;
 	const auto sharing = WindowLeadLagExecutor::GetSharing;
@@ -585,17 +585,8 @@ static WindowFunction GetLeadLagFunction(const char *name, const ExpressionType 
 	const auto finalize = WindowLeadLagLocalState::Finalizer;
 	const auto evaluate = WindowLeadLagExecutor::GetData;
 
-	// The default value is of a template of its own: it is force-cast to the return type, not unified with it
-	auto value_type = TypeName::VARIABLE("T");
-	WindowFunction func(name,
-	                    FunctionSignature()
-	                        .AddVariable("T")
-	                        .AddVariable("D")
-	                        .AddParameter("col", value_type)
-	                        .AddParameter("offset", LogicalType::BIGINT, Value::BIGINT(1))
-	                        .AddParameter("default", TypeName::VARIABLE("D"), Value(LogicalTypeId::SQLNULL))
-	                        .SetReturnType(value_type),
-	                    type, bind, bounds, sharing, global, local, sink, finalize, evaluate);
+	WindowFunction func(name, std::move(signature), type, bind, bounds, sharing, global, local, sink, finalize,
+	                    evaluate);
 
 	func.SetCanStreamCallback(WindowLeadLagExecutor::CanStream);
 	func.SetStreamingStateCallback(WindowLeadLagExecutor::GetStreamingState);
@@ -604,22 +595,38 @@ static WindowFunction GetLeadLagFunction(const char *name, const ExpressionType 
 	return func;
 }
 
+//! (col T, offset BIGINT := 1, default D := NULL) -> T. The default value is of a template of its own: it is
+//! force-cast to the return type, not unified with it
+static FunctionSignature GetLeadLagSignature() {
+	auto value_type = TypeName::VARIABLE("T");
+	return FunctionSignature()
+	    .AddVariable("T")
+	    .AddVariable("D")
+	    .AddParameter("col", value_type)
+	    .AddParameter("offset", LogicalType::BIGINT, Value::BIGINT(1))
+	    .AddParameter("default", TypeName::VARIABLE("D"), Value(LogicalTypeId::SQLNULL))
+	    .SetReturnType(value_type);
+}
+
 WindowFunction LeadFun::GetFunction() {
-	return GetLeadLagFunction(Name, ExpressionType::WINDOW_LEAD);
+	return GetLeadLagFunction(Name, ExpressionType::WINDOW_LEAD, GetLeadLagSignature());
 }
 
 WindowFunction LeadFun::GetTypedFunction(const LogicalType &type, idx_t nargs) {
-	auto func = GetLeadLagFunction(Name, ExpressionType::WINDOW_LEAD);
-	func.GetSignature().SetParameterType(0, type);
+	// the value is of the given type, and so is a default that is passed: the signature declares no variable for them
+	FunctionSignature signature;
+	signature.AddParameter("col", type).AddParameter("offset", LogicalType::BIGINT, Value::BIGINT(1));
 	if (nargs > 2) {
-		func.GetSignature().SetParameterType(2, type);
+		signature.AddParameter("default", type, Value(LogicalTypeId::SQLNULL));
+	} else {
+		signature.AddVariable("D").AddParameter("default", TypeName::VARIABLE("D"), Value(LogicalTypeId::SQLNULL));
 	}
-	func.GetSignature().SetReturnType(type);
-	return func;
+	signature.SetReturnType(type);
+	return GetLeadLagFunction(Name, ExpressionType::WINDOW_LEAD, std::move(signature));
 }
 
 WindowFunction LagFun::GetFunction() {
-	return GetLeadLagFunction(Name, ExpressionType::WINDOW_LAG);
+	return GetLeadLagFunction(Name, ExpressionType::WINDOW_LAG, GetLeadLagSignature());
 }
 
 unique_ptr<GlobalSinkState> WindowLeadLagExecutor::GetGlobal(ClientContext &client, const WindowExecutor &executor,

@@ -246,8 +246,8 @@ TEST_CASE("A struct parameter of type variables takes the fields of a struct by 
 		const auto reordered = LogicalType::STRUCT({{"b", LogicalType::VARCHAR}, {"a", LogicalType::INTEGER}});
 		selection = FunctionBinder::SelectFunction(*con.context, set, {reordered});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.types.at("T") == LogicalType::INTEGER);
-		REQUIRE(selection.GetBinding().variables.types.at("U") == LogicalType::VARCHAR);
+		REQUIRE(selection.GetBinding().variables.GetType("T") == LogicalType::INTEGER);
+		REQUIRE(selection.GetBinding().variables.GetType("U") == LogicalType::VARCHAR);
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == declared);
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::VARCHAR);
 
@@ -281,7 +281,7 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::BIGINT);
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::ARRAY(LogicalType::DOUBLE, 3));
-		REQUIRE(selection.GetBinding().variables.values.at("N") == Value::BIGINT(3));
+		REQUIRE(selection.GetBinding().variables.GetValue("N") == Value::BIGINT(3));
 
 		// any constant expression does, an argument that is not constant does not match
 		vector<unique_ptr<Expression>> arguments;
@@ -309,8 +309,8 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == bigint_array);
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == bigint_array);
-		REQUIRE(selection.GetBinding().variables.types.at("T") == LogicalType::BIGINT);
-		REQUIRE(selection.GetBinding().variables.values.at("N") == Value::BIGINT(3));
+		REQUIRE(selection.GetBinding().variables.GetType("T") == LogicalType::BIGINT);
+		REQUIRE(selection.GetBinding().variables.GetValue("N") == Value::BIGINT(3));
 
 		// arguments that determine different values do not match the overload
 		selection = FunctionBinder::SelectFunction(*con.context, same,
@@ -325,19 +325,20 @@ TEST_CASE("Selecting a function determines the value variables of the overload",
 		const auto bigint_list = LogicalType::LIST(LogicalType::BIGINT);
 		selection = FunctionBinder::SelectFunction(*con.context, same, {int_array, bigint_list});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.types.at("T") == LogicalType::BIGINT);
+		REQUIRE(selection.GetBinding().variables.GetType("T") == LogicalType::BIGINT);
 		REQUIRE(selection.GetBinding().layout.arguments[1].type == bigint_array);
 
 		// an argument that says nothing leaves the value to the other arguments
 		selection = FunctionBinder::SelectFunction(*con.context, same, {LogicalType::SQLNULL, int_array});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.values.at("N") == Value::BIGINT(3));
+		REQUIRE(selection.GetBinding().variables.GetValue("N") == Value::BIGINT(3));
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == int_array);
-		// if none of them says it, the return type that uses it is not determined
+		// if none of them says it the overload still matches, by its arguments: the return type that uses it cannot
+		// be made, which is an error of the call
 		selection = FunctionBinder::SelectFunction(*con.context, same, {LogicalType::SQLNULL, LogicalType::SQLNULL});
-		auto &unresolved = GetMismatches(selection)[0];
-		REQUIRE(unresolved.GetType() == FunctionMismatch::Type::TEMPLATE_UNRESOLVED);
-		REQUIRE(unresolved.Cast<FunctionMismatch::TemplateUnresolved>().template_name == "N");
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.GetValue("N").IsNull());
+		REQUIRE_THROWS_WITH(ReturnTypeOf(con, selection.GetBinding()), Catch::Contains("cannot be NULL"));
 
 		// rescaled<W: INTEGER, S: INTEGER>(x DECIMAL(W, S)) -> DECIMAL(W, S): also of the decimal a number is passed as
 		TypeName decimal(Identifier("DECIMAL"), {TypeName(Identifier("W")), TypeName(Identifier("S"))});
@@ -377,7 +378,7 @@ TEST_CASE("A value the type of a parameter declares is the one an argument of it
 		auto selection = FunctionBinder::SelectFunction(*con.context, integral, {LogicalType::DECIMAL(18, 0)});
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::DECIMAL(18, 0));
-		REQUIRE(selection.GetBinding().variables.values.at("W") == Value::BIGINT(18));
+		REQUIRE(selection.GetBinding().variables.GetValue("W") == Value::BIGINT(18));
 		// one of another scale is not passed as one of it
 		selection = FunctionBinder::SelectFunction(*con.context, integral, {LogicalType::DECIMAL(18, 3)});
 		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
@@ -597,7 +598,7 @@ TEST_CASE("Overloads that match at the same cost are selected by how specific th
 	const auto t_struct = TypeName::VARIABLE("TS");
 	const TypeName any(LogicalType::ANY);
 	const auto t_list = TypeName::LIST(t);
-	const auto any_list = TypeName::LIST(any);
+	const auto u_list = TypeName::LIST(u);
 	// types of value variables, and types that declare the values
 	const TypeName geometry(LogicalType::GEOMETRY());
 	const TypeName geometry_c(Identifier("GEOMETRY"), {TypeName::VARIABLE("C")});
@@ -650,8 +651,8 @@ TEST_CASE("Overloads that match at the same cost are selected by how specific th
 		    {"T and ANY, an integer", {{t}, {any}}, {integer}, ambiguous},
 		    {"T and ANY, NULL", {{t}, {any}}, {null}, ambiguous},
 		    {"T and U, an integer", {{t}, {u}}, {integer}, ambiguous},
-		    {"T[] and ANY[], a list", {{t_list}, {any_list}}, {integers}, ambiguous},
-		    {"T[] and ANY[], NULL", {{t_list}, {any_list}}, {null}, ambiguous},
+		    {"T[] and U[], a list", {{t_list}, {u_list}}, {integers}, ambiguous},
+		    {"T[] and U[], NULL", {{t_list}, {u_list}}, {null}, ambiguous},
 		    {"T IS DECIMAL and U IS DECIMAL, a decimal", {{t_decimal}, {u_decimal}}, {decimal}, ambiguous},
 		    {"T IS DECIMAL and U IS DECIMAL, NULL", {{t_decimal}, {u_decimal}}, {null}, ambiguous},
 		    {"DATE and TIME, NULL", {{LogicalType::DATE}, {LogicalType::TIME}}, {null}, ambiguous},
@@ -805,6 +806,18 @@ TEST_CASE("A call matches an overload at the rank the rules count", "[api][funct
 		     GetSelectionSignature({float_n}),
 		     {null},
 		     MakeRank(0, 161, 0, 0, 1)},
+		    {"rule 3: T and T, an integer costs the cast to the type it is passed as",
+		     GetSelectionSignature({t, t}),
+		     {integer, LogicalType::BIGINT},
+		     MakeRank(2, 101, 2, 0, 0)},
+		    {"rule 3: T and T, a BOOLEAN is cast explicitly to INTEGER and costs nothing",
+		     GetSelectionSignature({t, t}),
+		     {LogicalType::BOOLEAN, integer},
+		     MakeRank(2, 0, 2, 0, 0)},
+		    {"rule 3: T[] and T, a list costs the cast to the list it is passed as",
+		     GetSelectionSignature({t_list, t}),
+		     {integers, LogicalType::BIGINT},
+		     MakeRank(2, 100, 2, 2, 0)},
 		    {"rule 3: T[] and T, a string literal costs 20",
 		     GetSelectionSignature({t_list, t}),
 		     {string_literal, integer},
@@ -881,7 +894,6 @@ TEST_CASE("The rules of the rank decide between overloads in their order", "[api
 	const auto t_struct = TypeName::VARIABLE("TS");
 	const TypeName any(LogicalType::ANY);
 	const auto t_list = TypeName::LIST(t);
-	const auto any_list = TypeName::LIST(any);
 	const auto float_n = TypeName::ARRAY(LogicalType::FLOAT, TypeName::VARIABLE("N"));
 	const auto float_3 = TypeName::ARRAY(LogicalType::FLOAT, 3);
 	const auto t_n = TypeName::ARRAY(t, TypeName::VARIABLE("N"));
@@ -918,10 +930,10 @@ TEST_CASE("The rules of the rank decide between overloads in their order", "[api
 		     {{t_decimal}, {LogicalType::DOUBLE}},
 		     {decimal},
 		     0},
-		    {"rule 3 before rule 5: ANY over ANY[], an array is cast to a list", {{any_list}, {any}}, {integers_3}, 1},
+		    {"rule 3 before rule 5: ANY over T[], an array is cast to a list", {{t_list}, {any}}, {integers_3}, 1},
 		    {"rule 4: STRUCT(a INTEGER) over T IS STRUCT, the struct", {{struct_a}, {t_struct}}, {a_struct}, 0},
 		    {"rule 5: T[] over T, a list", {{t_list}, {t}}, {integers}, 0},
-		    {"rule 5: ANY[] over ANY, a list", {{any_list}, {any}}, {integers}, 0},
+		    {"rule 5: T[] over ANY, a list", {{t_list}, {any}}, {integers}, 0},
 		    {"rule 5: MAP(VARCHAR, T) over MAP(U, T), a map", {{map_varchar_t}, {map_u_t}}, {a_map}, 0},
 		    {"rule 3: (T IS STRUCT, U) over (T[], T), NULL and an integer: a NULL costs less as itself than a list",
 		     {{t_list, t}, {t_struct, u}},
@@ -994,7 +1006,7 @@ TEST_CASE("An argument that is not an instance of the type of its parameter is d
 	const LogicalType string_literal(LogicalTypeId::STRING_LITERAL);
 	const auto t_decimal = TypeName::VARIABLE("TD");
 	const auto decimal = LogicalType::DECIMAL(5, 2);
-	// has(list T[], element T), single(list T[]), wrapped(list ANY[], element INTEGER)
+	// has(list T[], element T), single(list T[]), wrapped(list U[], element INTEGER)
 	auto has = make_shared_ptr<ScalarFunction>("has", GetSelectionSignature({TypeName::LIST(t), t}), NoopExec);
 	ScalarFunctionSet has_set("has");
 	has_set.AddFunction(*has);
@@ -1002,7 +1014,7 @@ TEST_CASE("An argument that is not an instance of the type of its parameter is d
 	single_set.AddFunction(ScalarFunction("single", GetSelectionSignature({TypeName::LIST(t)}), NoopExec));
 	ScalarFunctionSet wrapped_set("wrapped");
 	wrapped_set.AddFunction(ScalarFunction(
-	    "wrapped", GetSelectionSignature({TypeName::LIST(LogicalType::ANY), LogicalType::INTEGER}), NoopExec));
+	    "wrapped", GetSelectionSignature({TypeName::LIST(TypeName::VARIABLE("U")), LogicalType::INTEGER}), NoopExec));
 	// plus(a T IS DECIMAL, b T IS DECIMAL), plus(a DOUBLE, b DOUBLE)
 	ScalarFunctionSet plus_set("plus");
 	plus_set.AddFunction(ScalarFunction("plus", GetSelectionSignature({t_decimal, t_decimal}), NoopExec));
@@ -1015,7 +1027,7 @@ TEST_CASE("An argument that is not an instance of the type of its parameter is d
 		auto selection = FunctionBinder::SelectFunction(*con.context, has_set, {variant, LogicalType::INTEGER});
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == integers);
-		REQUIRE(selection.GetBinding().variables.types.at("T") == LogicalType::INTEGER);
+		REQUIRE(selection.GetBinding().variables.GetType("T") == LogicalType::INTEGER);
 		selection = FunctionBinder::SelectFunction(*con.context, has_set, {string_literal, LogicalType::INTEGER});
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == integers);
@@ -1037,7 +1049,7 @@ TEST_CASE("An argument that is not an instance of the type of its parameter is d
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::LIST(variant));
 
-		// nothing is deferred to ANY, which is the type of the argument itself
+		// nothing is deferred to a variable that only the argument could say
 		selection = FunctionBinder::SelectFunction(*con.context, wrapped_set, {variant, LogicalType::INTEGER});
 		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
 
@@ -1089,7 +1101,7 @@ TEST_CASE("A type of another kind than the type of its parameter says nothing ab
 		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
 		// the variable is what the other argument says, not the type of the keys
 		auto binding = FunctionBinder::MatchFunction(*con.context, has, {int_varchar_map, LogicalType::DATE});
-		REQUIRE(binding.variables.types.at("T") == LogicalType::DATE);
+		REQUIRE(binding.variables.GetType("T") == LogicalType::DATE);
 		REQUIRE(binding.layout.arguments[0].type == LogicalType::LIST(LogicalType::DATE));
 		// and not determined if there is none
 		selection = FunctionBinder::SelectFunction(*con.context, single_set, {int_varchar_map});
@@ -1103,17 +1115,22 @@ TEST_CASE("A type of another kind than the type of its parameter says nothing ab
 		// a list and an array are of one kind: the elements of one say what the elements of the other are
 		selection = FunctionBinder::SelectFunction(*con.context, has_set, {floats_3, LogicalType::DOUBLE});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.types.at("T") == LogicalType::DOUBLE);
+		REQUIRE(selection.GetBinding().variables.GetType("T") == LogicalType::DOUBLE);
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == doubles);
 		selection = FunctionBinder::SelectFunction(*con.context, dot_set, {doubles, floats_3});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.types.at("T") == LogicalType::DOUBLE);
+		REQUIRE(selection.GetBinding().variables.GetType("T") == LogicalType::DOUBLE);
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::ARRAY(LogicalType::DOUBLE, 3));
 		// and so are a struct with and without names
 		selection = FunctionBinder::SelectFunction(*con.context, entries_set, {LogicalType::LIST(entry)});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.types.at("T") == LogicalType::INTEGER);
-		REQUIRE(selection.GetBinding().variables.types.at("U") == LogicalType::VARCHAR);
+		REQUIRE(selection.GetBinding().variables.GetType("T") == LogicalType::INTEGER);
+		REQUIRE(selection.GetBinding().variables.GetType("U") == LogicalType::VARCHAR);
+		// the whole of a type is paired: a tuple of three is not the tuple of its first two types
+		const auto triple =
+		    LogicalType::TUPLE(vector<LogicalType> {LogicalType::INTEGER, LogicalType::VARCHAR, LogicalType::VARCHAR});
+		selection = FunctionBinder::SelectFunction(*con.context, entries_set, {LogicalType::LIST(triple)});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
 	});
 }
 
@@ -1131,12 +1148,13 @@ TEST_CASE("A value variable in the place of a type matches no call", "[api][func
 	                               NoopExec));
 	const auto integers = LogicalType::LIST(LogicalType::INTEGER);
 	con.context->RunFunctionInTransaction([&]() {
-		// a list is not made of a value
-		REQUIRE_THROWS_WITH(
-		    FunctionBinder::SelectFunction(*con.context, set, {integers, FunctionCallArgument::Constant(Value(3))}),
-		    Catch::Contains("does not accept type parameters"));
+		// a list is not made of a value: the constructor does not take it, so the list cannot be passed
+		auto selection =
+		    FunctionBinder::SelectFunction(*con.context, set, {integers, FunctionCallArgument::Constant(Value(3))});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
 		// and a list is not passed as a list of a value that is not known
-		auto selection = FunctionBinder::SelectFunction(*con.context, set, {integers, LogicalType::SQLNULL});
+		selection = FunctionBinder::SelectFunction(*con.context, set, {integers, LogicalType::SQLNULL});
 		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
 		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
 	});
@@ -1275,12 +1293,12 @@ TEST_CASE("A constrained variable only stands for a type of its kind", "[api][fu
 		// types of the kind are promoted to the type the variable is
 		auto selection = FunctionBinder::SelectFunction(*con.context, both, {decimal, wider_decimal});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.types.at("TD") == LogicalType::DECIMAL(18, 3));
+		REQUIRE(selection.GetBinding().variables.GetType("TD") == LogicalType::DECIMAL(18, 3));
 		// a struct with and without names are of one kind
 		for (auto &type : {a_struct, a_tuple}) {
 			selection = FunctionBinder::SelectFunction(*con.context, record, {type});
 			REQUIRE(selection.IsSuccess());
-			REQUIRE(selection.GetBinding().variables.types.at("TS") == type);
+			REQUIRE(selection.GetBinding().variables.GetType("TS") == type);
 		}
 
 		// no type is converted to be of the kind: an integer is not a decimal, whatever the other argument is
@@ -1301,7 +1319,7 @@ TEST_CASE("A constrained variable only stands for a type of its kind", "[api][fu
 		selection = FunctionBinder::SelectFunction(*con.context, width, {LogicalType::INTEGER});
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::DECIMAL(10, 0));
-		REQUIRE(selection.GetBinding().variables.values.at("W") == Value::BIGINT(10));
+		REQUIRE(selection.GetBinding().variables.GetValue("W") == Value::BIGINT(10));
 	});
 }
 
@@ -1337,10 +1355,10 @@ TEST_CASE("A variable that only an unresolved parameter says leaves the call unr
 	    NoopExec));
 	pick.AddFunction(
 	    ScalarFunction("pick", FunctionSignature().AddVariable("T").AddParameter("x", t).SetReturnType(t), NoopExec));
-	// wrapped(list ANY[], element T)
+	// wrapped(list U[], element T)
 	ScalarFunctionSet wrapped("wrapped");
 	wrapped.AddFunction(
-	    ScalarFunction("wrapped", GetSelectionSignature({TypeName::LIST(LogicalType::ANY), t}), NoopExec));
+	    ScalarFunction("wrapped", GetSelectionSignature({TypeName::LIST(TypeName::VARIABLE("U")), t}), NoopExec));
 	// same(a T, b T), one(a T), compare(a T, b U)
 	ScalarFunctionSet same("same");
 	same.AddFunction(ScalarFunction("same", GetSelectionSignature({t, t}), NoopExec));
@@ -1348,12 +1366,9 @@ TEST_CASE("A variable that only an unresolved parameter says leaves the call unr
 	one.AddFunction(ScalarFunction("one", GetSelectionSignature({t}), NoopExec));
 	ScalarFunctionSet compare("compare");
 	compare.AddFunction(ScalarFunction("compare", GetSelectionSignature({t, TypeName::VARIABLE("U")}), NoopExec));
-	// any(a ANY), any_list(a ANY[]), sized<N: INTEGER>(n N)
+	// any(a ANY), sized<N: INTEGER>(n N)
 	ScalarFunctionSet any("any");
 	any.AddFunction(ScalarFunction("any", GetSelectionSignature({LogicalType::ANY}), NoopExec));
-	ScalarFunctionSet any_list("any_list");
-	any_list.AddFunction(
-	    ScalarFunction("any_list", GetSelectionSignature({TypeName::LIST(LogicalType::ANY)}), NoopExec));
 	ScalarFunctionSet sized("sized");
 	sized.AddFunction(ScalarFunction("sized",
 	                                 FunctionSignature()
@@ -1420,10 +1435,8 @@ TEST_CASE("A variable that only an unresolved parameter says leaves the call unr
 		REQUIRE_THROWS_WITH(
 		    FunctionBinder::MatchFunction(*con.context, compare.GetSharedOverload(0), {unknown, LogicalType::INTEGER}),
 		    Catch::Contains(unresolved_message));
-		// nor is ANY, which is a type variable of its own wherever it is written, or a value variable
+		// nor is ANY, which takes the type of its argument, or a value variable
 		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, any, {unknown}),
-		                    Catch::Contains(unresolved_message));
-		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, any_list, {unknown}),
 		                    Catch::Contains(unresolved_message));
 		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, sized, {unknown}),
 		                    Catch::Contains(unresolved_message));
@@ -1442,9 +1455,6 @@ TEST_CASE("A variable that only an unresolved parameter says leaves the call unr
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::SQLNULL);
 		selection = FunctionBinder::SelectFunction(*con.context, any, {LogicalType::SQLNULL});
-		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::SQLNULL);
-		selection = FunctionBinder::SelectFunction(*con.context, any_list, {LogicalType::SQLNULL});
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::SQLNULL);
 	});
@@ -1474,7 +1484,9 @@ TEST_CASE("A NULL that leaves a value variable unknown is passed as it is", "[ap
 		auto selection =
 		    FunctionBinder::SelectFunction(*con.context, distance, {LogicalType::SQLNULL, LogicalType::SQLNULL});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.values.count("N") == 0);
+		// the variable is a NULL of its values, which no type is made of
+		REQUIRE(selection.GetBinding().variables.GetValue("N").IsNull());
+		REQUIRE(selection.GetBinding().variables.GetValue("N").type() == LogicalType::BIGINT);
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::SQLNULL);
 		REQUIRE(selection.GetBinding().layout.arguments[1].type == LogicalType::SQLNULL);
 
@@ -1487,6 +1499,114 @@ TEST_CASE("A NULL that leaves a value variable unknown is passed as it is", "[ap
 		selection = FunctionBinder::SelectFunction(*con.context, sized, {LogicalType::SQLNULL});
 		REQUIRE(selection.IsSuccess());
 		REQUIRE(selection.GetBinding().GetOverloadIndex() == 1);
+	});
+}
+
+TEST_CASE("A NULL and an unresolved parameter take the value the other arguments say", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const string unresolved_message = "Parameter types could not be resolved";
+	const auto unknown = LogicalType(LogicalType::UNKNOWN);
+	const LogicalType null_type(LogicalType::SQLNULL);
+	const auto float_array_3 = LogicalType::ARRAY(LogicalType::FLOAT, 3);
+	const auto float_array_4 = LogicalType::ARRAY(LogicalType::FLOAT, 4);
+	const TypeName float_array(Identifier("ARRAY"), {TypeName(LogicalType::FLOAT), TypeName(Identifier("N"))});
+	const TypeName geometry(Identifier("GEOMETRY"), {TypeName(Identifier("C"))});
+	// three(a FLOAT[N], b FLOAT[N], c FLOAT[N]), located(a GEOMETRY(C))
+	ScalarFunctionSet three("three");
+	three.AddFunction(
+	    ScalarFunction("three", GetSelectionSignature({float_array, float_array, float_array}), NoopExec));
+	ScalarFunctionSet located("located");
+	located.AddFunction(ScalarFunction("located", GetSelectionSignature({geometry}), NoopExec));
+	// sized<N: INTEGER>(n N) -> INTEGER, zeros<N: INTEGER>(n N) -> DOUBLE[N]
+	ScalarFunctionSet sized("sized");
+	sized.AddFunction(ScalarFunction("sized",
+	                                 FunctionSignature()
+	                                     .AddVariable("N", TypeVariable::Kind::INTEGER)
+	                                     .AddParameter("n", TypeName(Identifier("N")))
+	                                     .SetReturnType(LogicalType::INTEGER),
+	                                 NoopExec));
+	ScalarFunctionSet zeros("zeros");
+	zeros.AddFunction(ScalarFunction(
+	    "zeros",
+	    FunctionSignature()
+	        .AddVariable("N", TypeVariable::Kind::INTEGER)
+	        .AddParameter("n", TypeName(Identifier("N")))
+	        .SetReturnType(TypeName(Identifier("ARRAY"), {TypeName(LogicalType::DOUBLE), TypeName(Identifier("N"))})),
+	    NoopExec));
+
+	con.context->RunFunctionInTransaction([&]() {
+		// only NULLs say the variable: it is a NULL of its values
+		auto selection = FunctionBinder::SelectFunction(*con.context, three, {null_type, null_type, null_type});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.GetValue("N").IsNull());
+		REQUIRE(selection.GetBinding().variables.GetValue("N").type() == LogicalType::BIGINT);
+		selection = FunctionBinder::SelectFunction(*con.context, located, {null_type});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.GetValue("C").IsNull());
+		REQUIRE(selection.GetBinding().variables.GetValue("C").type() == LogicalType::VARCHAR);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == null_type);
+
+		// a NULL takes the value another argument says, wherever it is passed
+		const vector<vector<LogicalType>> with_value {
+		    {null_type, float_array_3, null_type}, {float_array_3, null_type, null_type},
+		    {null_type, null_type, float_array_3}, {unknown, float_array_3, null_type},
+		    {null_type, float_array_3, unknown},   {float_array_3, unknown, unknown}};
+		for (auto &arguments : with_value) {
+			selection = FunctionBinder::SelectFunction(*con.context, three, arguments);
+			REQUIRE(selection.IsSuccess());
+			REQUIRE(selection.GetBinding().variables.GetValue("N") == Value::BIGINT(3));
+			for (auto &argument : selection.GetBinding().layout.arguments) {
+				REQUIRE(argument.type == float_array_3);
+			}
+		}
+
+		// and is no value of its own: two values that differ are a conflict as they are without it
+		for (auto &middle : {null_type, unknown}) {
+			selection = FunctionBinder::SelectFunction(*con.context, three, {float_array_3, middle, float_array_4});
+			auto &deduction = GetMismatches(selection)[0];
+			REQUIRE(deduction.GetType() == FunctionMismatch::Type::TEMPLATE_DEDUCTION);
+			REQUIRE(deduction.Cast<FunctionMismatch::TemplateDeduction>().template_name == "N");
+			REQUIRE(deduction.Cast<FunctionMismatch::TemplateDeduction>().argument.GetIndex() == 2);
+			REQUIRE(StringUtil::Contains(GetErrorMessage(selection), "it is determined to be both 3 and 4"));
+		}
+		selection = FunctionBinder::SelectFunction(*con.context, three, {null_type, float_array_3, float_array_4});
+		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::TemplateDeduction>().argument.GetIndex() == 2);
+		REQUIRE(StringUtil::Contains(GetErrorMessage(selection), "it is determined to be both 3 and 4"));
+
+		// an unresolved parameter that no value is said with leaves the call unresolved, with a NULL or without
+		const vector<vector<LogicalType>> unresolved {{unknown, unknown, unknown},
+		                                              {unknown, null_type, null_type},
+		                                              {null_type, unknown, null_type},
+		                                              {null_type, null_type, unknown}};
+		for (auto &arguments : unresolved) {
+			REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, three, arguments),
+			                    Catch::Contains(unresolved_message));
+		}
+		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, located, {unknown}),
+		                    Catch::Contains(unresolved_message));
+
+		// a parameter that is the variable itself: a NULL says a NULL of the values, and is passed as one
+		selection = FunctionBinder::SelectFunction(*con.context, sized, {null_type});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.GetValue("N").IsNull());
+		REQUIRE(selection.GetBinding().variables.GetValue("N").type() == LogicalType::BIGINT);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::BIGINT);
+		// also a NULL that has a type, which is one that is passed as the values
+		for (auto &null_value : {Value(LogicalType::INTEGER), Value(LogicalType::TINYINT), Value(null_type)}) {
+			selection =
+			    FunctionBinder::SelectFunction(*con.context, sized, {FunctionCallArgument::Constant(null_value)});
+			REQUIRE(selection.IsSuccess());
+			REQUIRE(selection.GetBinding().variables.GetValue("N").IsNull());
+			REQUIRE(selection.GetBinding().variables.GetValue("N").type() == LogicalType::BIGINT);
+			REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::BIGINT);
+		}
+		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, sized, {unknown}),
+		                    Catch::Contains(unresolved_message));
+		// no return type is made of a NULL: the overload matches, and the call is an error
+		selection = FunctionBinder::SelectFunction(*con.context, zeros, {null_type});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE_THROWS_WITH(ReturnTypeOf(con, selection.GetBinding()), Catch::Contains("cannot be NULL"));
 	});
 }
 
@@ -1532,6 +1652,63 @@ TEST_CASE("A NULL keeps the literal it is promoted with a literal only by the po
 	});
 }
 
+TEST_CASE("An empty tuple or struct is promoted to the other tuple or struct", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto empty_tuple = LogicalType::TUPLE(vector<LogicalType>());
+	const auto empty_struct = LogicalType::STRUCT(child_list_t<LogicalType>());
+	const auto tuple = LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::VARCHAR});
+	const auto int_tuple = LogicalType::TUPLE(vector<LogicalType> {LogicalType::INTEGER});
+	const auto two_int_tuple = LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::INTEGER});
+	const auto int_struct = LogicalType::STRUCT({{"a", LogicalType::INTEGER}});
+	const PromotionPolicy policy;
+
+	con.context->RunFunctionInTransaction([&]() {
+		auto &context = *con.context;
+		LogicalType result;
+		// an empty tuple takes a tuple as it is, in both orders - with and without a context
+		REQUIRE(LogicalType::TryGetMaxLogicalType(context, empty_tuple, tuple, result));
+		REQUIRE(result == tuple);
+		REQUIRE(LogicalType::TryGetMaxLogicalType(context, tuple, empty_tuple, result));
+		REQUIRE(result == tuple);
+		REQUIRE(LogicalType::TryGetMaxLogicalType(nullptr, empty_tuple, tuple, result, nullptr, policy));
+		REQUIRE(result == tuple);
+		REQUIRE(LogicalType::TryGetMaxLogicalType(nullptr, tuple, empty_tuple, result, nullptr, policy));
+		REQUIRE(result == tuple);
+
+		// an empty tuple takes a struct as it is, with its names
+		REQUIRE(LogicalType::TryGetMaxLogicalType(context, empty_tuple, int_struct, result));
+		REQUIRE(result == int_struct);
+		REQUIRE(LogicalType::TryGetMaxLogicalType(context, int_struct, empty_tuple, result));
+		REQUIRE(result == int_struct);
+		REQUIRE(LogicalType::TryGetMaxLogicalType(nullptr, empty_tuple, int_struct, result, nullptr, policy));
+		REQUIRE(result == int_struct);
+		REQUIRE(LogicalType::TryGetMaxLogicalType(nullptr, int_struct, empty_tuple, result, nullptr, policy));
+		REQUIRE(result == int_struct);
+
+		// an empty struct takes a tuple as a tuple, and a struct as it did before
+		REQUIRE(LogicalType::TryGetMaxLogicalType(context, empty_struct, int_tuple, result));
+		REQUIRE(result == int_tuple);
+		REQUIRE(LogicalType::TryGetMaxLogicalType(context, int_tuple, empty_struct, result));
+		REQUIRE(result == int_tuple);
+		REQUIRE(LogicalType::TryGetMaxLogicalType(nullptr, empty_struct, int_tuple, result, nullptr, policy));
+		REQUIRE(result == int_tuple);
+		REQUIRE(LogicalType::TryGetMaxLogicalType(context, empty_struct, int_struct, result));
+		REQUIRE(result == int_struct);
+
+		// two empty sides are unchanged
+		REQUIRE(LogicalType::TryGetMaxLogicalType(context, empty_tuple, empty_tuple, result));
+		REQUIRE(result == empty_tuple);
+		REQUIRE(LogicalType::TryGetMaxLogicalType(context, empty_tuple, empty_struct, result));
+		REQUIRE(result == empty_struct);
+
+		// two non-empty tuples of a different size still have no common type
+		REQUIRE(!LogicalType::TryGetMaxLogicalType(context, int_tuple, two_int_tuple, result));
+		REQUIRE(!LogicalType::TryGetMaxLogicalType(context, two_int_tuple, int_tuple, result));
+		REQUIRE(!LogicalType::TryGetMaxLogicalType(nullptr, int_tuple, two_int_tuple, result, nullptr, policy));
+	});
+}
+
 TEST_CASE("A variable of a signature is not named like a built-in type", "[api][function_binding]") {
 	for (auto &name : {"INTEGER", "any", "LIST", "decimal"}) {
 		REQUIRE_THROWS_WITH(FunctionSignature().AddVariable(name), Catch::Contains("is named like a built-in type"));
@@ -1572,15 +1749,17 @@ TEST_CASE("A named argument passed twice does not match a function the caller ch
 	REQUIRE(ParameterIndexes(binding) == parameters);
 }
 
-TEST_CASE("An argument that is cast explicitly to a type of ANY has to have a type in the place of ANY",
+TEST_CASE("An argument that is cast explicitly to a type of a variable has to say the variable",
           "[api][function_binding]") {
 	DuckDB db(nullptr);
 	Connection con(db);
-	// wrap(list ANY[]) -> INTEGER
-	auto function = make_shared_ptr<ScalarFunction>(
-	    "wrap",
-	    FunctionSignature().AddParameter("list", TypeName::LIST(LogicalType::ANY)).SetReturnType(LogicalType::INTEGER),
-	    NoopExec);
+	// wrap<T>(list T[]) -> INTEGER
+	auto function = make_shared_ptr<ScalarFunction>("wrap",
+	                                                FunctionSignature()
+	                                                    .AddVariable("T")
+	                                                    .AddParameter("list", TypeName::LIST(TypeName::VARIABLE("T")))
+	                                                    .SetReturnType(LogicalType::INTEGER),
+	                                                NoopExec);
 	ScalarFunctionSet set("wrap");
 	set.AddFunction(*function);
 	const auto integer_literal = LogicalType::INTEGER_LITERAL(Value::INTEGER(1));
@@ -1596,10 +1775,10 @@ TEST_CASE("An argument that is cast explicitly to a type of ANY has to have a ty
 			REQUIRE(failed[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
 		}
 
-		// nor when the caller chose the function: there is nothing a list of ANY is a list of
+		// nor when the caller chose the function: there is nothing the list is a list of
 		for (auto &literal : {integer_literal, string_literal, LogicalType(LogicalType::DATE)}) {
 			REQUIRE_THROWS_WITH(FunctionBinder::MatchFunction(*con.context, function, {literal}),
-			                    Catch::Contains("cannot be implicitly cast to ANY[]"));
+			                    Catch::Contains("cannot be implicitly cast to T[]"));
 		}
 		// a list is passed as it is, and an array as the list of what it holds
 		auto binding = FunctionBinder::MatchFunction(*con.context, function, {LogicalType::LIST(integer_literal)});
@@ -1607,6 +1786,132 @@ TEST_CASE("An argument that is cast explicitly to a type of ANY has to have a ty
 		binding = FunctionBinder::MatchFunction(*con.context, function, {LogicalType::ARRAY(LogicalType::DATE, 3)});
 		REQUIRE(binding.layout.arguments[0].type == LogicalType::LIST(LogicalType::DATE));
 	});
+}
+
+TEST_CASE("Every variable of an overload is resolved by its arguments", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto t = TypeName::VARIABLE("T");
+	// count<T>(*args T) -> INTEGER, pair<T, U>(list T[], map MAP(VARCHAR, U)) -> INTEGER
+	ScalarFunctionSet count("count");
+	count.AddFunction(ScalarFunction(
+	    "count", FunctionSignature().AddVariable("T").AddArgs("args", t).SetReturnType(LogicalType::INTEGER),
+	    NoopExec));
+	ScalarFunctionSet pair("pair");
+	pair.AddFunction(ScalarFunction(
+	    "pair",
+	    GetSelectionSignature({TypeName::LIST(t), TypeName::MAP(LogicalType::VARCHAR, TypeName::VARIABLE("U"))}),
+	    NoopExec));
+	const auto integers = LogicalType::LIST(LogicalType::INTEGER);
+	const auto a_map = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::DATE);
+
+	con.context->RunFunctionInTransaction([&]() {
+		// a variable that nothing is passed as is not determined, whether or not the return type uses it
+		auto selection = FunctionBinder::SelectFunction(*con.context, count, FunctionCallArguments());
+		auto &unresolved = GetMismatches(selection)[0];
+		REQUIRE(unresolved.GetType() == FunctionMismatch::Type::TEMPLATE_UNRESOLVED);
+		REQUIRE(unresolved.Cast<FunctionMismatch::TemplateUnresolved>().template_name == "T");
+		selection = FunctionBinder::SelectFunction(*con.context, count, {LogicalType::DATE, LogicalType::TIMESTAMP});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.GetType("T") == LogicalType::TIMESTAMP);
+
+		// an argument that has no parts for the type of its parameter does not say the variables of that type: it
+		// is the argument that cannot be passed, and every such argument counts
+		selection = FunctionBinder::SelectFunction(*con.context, pair, {integers, integers});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 1);
+		REQUIRE(GetMismatches(selection)[0].GetDistance() == 1);
+		selection = FunctionBinder::SelectFunction(*con.context, pair, {a_map, integers});
+		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
+		REQUIRE(GetMismatches(selection)[0].GetDistance() == 2);
+		// together with one that cannot be cast to a type that is made
+		selection = FunctionBinder::SelectFunction(*con.context, pair, {LogicalType::DATE, a_map});
+		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+		REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
+	});
+}
+
+TEST_CASE("An argument that fits its parameter is passed as it is where the type is not constructed again",
+          "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	// crs<C: STRING>(geom GEOMETRY(C)), fields(s STRUCT(**KV)), scaled<W, S>(x DECIMAL(W, S))
+	ScalarFunctionSet crs("crs");
+	crs.AddFunction(ScalarFunction(
+	    "crs", GetSelectionSignature({TypeName(Identifier("GEOMETRY"), {TypeName::VARIABLE("C")})}), NoopExec));
+	ScalarFunctionSet fields("fields");
+	fields.AddFunction(
+	    ScalarFunction("fields",
+	                   FunctionSignature()
+	                       .AddNamedPack("KV")
+	                       .AddParameter("s", TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")}))
+	                       .SetReturnType(LogicalType::INTEGER),
+	                   NoopExec));
+	ScalarFunctionSet scaled("scaled");
+	scaled.AddFunction(ScalarFunction(
+	    "scaled", GetSelectionSignature({TypeName::DECIMAL(TypeName::VARIABLE("W"), TypeName::VARIABLE("S"))}),
+	    NoopExec));
+	// a coordinate system that is not identified, a member without a name, a width the session does not allow
+	const auto unknown_crs = LogicalType::GEOMETRY("FOO");
+	const auto unnamed_member = LogicalType::STRUCT({{"", LogicalType::INTEGER}, {"x", LogicalType::VARCHAR}});
+	const auto wide = LogicalType::DECIMAL(40, 2);
+
+	con.context->RunFunctionInTransaction([&]() {
+		// the constructor keeps a coordinate system it does not identify
+		auto selection = FunctionBinder::SelectFunction(*con.context, crs, {unknown_crs});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.GetValue("C") == Value("FOO"));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == unknown_crs);
+
+		// no constructor makes these of their parts
+		selection = FunctionBinder::SelectFunction(*con.context, fields, {unnamed_member});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == unnamed_member);
+		REQUIRE(selection.GetBinding().variables.GetPack("KV").Count() == 2);
+		selection = FunctionBinder::SelectFunction(*con.context, scaled, {wide});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.GetValue("W") == Value::BIGINT(40));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == wide);
+	});
+}
+
+TEST_CASE("ANY is the whole type of a parameter, which takes the type of its argument", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	// any(a ANY, *args ANY) -> INTEGER
+	ScalarFunctionSet any("any");
+	any.AddFunction(ScalarFunction("any",
+	                               FunctionSignature()
+	                                   .AddParameter("a", LogicalType::ANY)
+	                                   .AddArgs("args", LogicalType::ANY)
+	                                   .SetReturnType(LogicalType::INTEGER),
+	                               NoopExec));
+	const auto integer_literal = LogicalType::INTEGER_LITERAL(Value::INTEGER(1));
+	const auto string_literal = LogicalType(LogicalTypeId::STRING_LITERAL);
+	const auto dates = LogicalType::ARRAY(LogicalType::DATE, 3);
+
+	con.context->RunFunctionInTransaction([&]() {
+		// every argument is passed as its own type, normalized: a literal is not a type an argument is passed as
+		auto selection = FunctionBinder::SelectFunction(*con.context, any,
+		                                                {integer_literal, string_literal, dates, LogicalType::SQLNULL});
+		REQUIRE(selection.IsSuccess());
+		auto &arguments = selection.GetBinding().layout.arguments;
+		REQUIRE(arguments[0].type == LogicalType::INTEGER);
+		REQUIRE(arguments[1].type == LogicalType::VARCHAR);
+		REQUIRE(arguments[2].type == dates);
+		REQUIRE(arguments[3].type == LogicalType::SQLNULL);
+		// an unresolved parameter has no type to take
+		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, any, {LogicalType::UNKNOWN}),
+		                    Catch::Contains("Parameter types could not be resolved"));
+	});
+
+	// within a type it would have to be a variable: a signature says so with one
+	REQUIRE_NOTHROW(FunctionSignature().AddParameter("a", LogicalType::ANY).Verify());
+	REQUIRE_THROWS_WITH(FunctionSignature().AddParameter("a", TypeName::LIST(LogicalType::ANY)).Verify(),
+	                    Catch::Contains("uses ANY as a part of its type"));
+	REQUIRE_THROWS_WITH(
+	    FunctionSignature().AddParameter("a", TypeName::MAP(LogicalType::VARCHAR, LogicalType::ANY)).Verify(),
+	    Catch::Contains("uses ANY as a part of its type"));
 }
 
 //! h(value ANY, depth BIGINT := 0, *args ANY) -> "value" nested in "depth" lists
@@ -1810,15 +2115,35 @@ TEST_CASE("A signature that misuses a pack is rejected", "[api][function_binding
 	                        .AddParameter("x", TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("T")}))
 	                        .Verify(),
 	                    Catch::Contains("Pack '*T' is used as '**T': its types have no labels"));
+	// a named pack is used without its labels in the return type only: a parameter has no labels to say it with
 	REQUIRE_THROWS_WITH(
 	    FunctionSignature().AddNamedPack("KV").AddParameter("x", TypeName::TUPLE({TypeName::PACK("KV")})).Verify(),
-	    Catch::Contains("Pack '**KV' is used as '*KV': using a named pack without its labels is not supported"));
+	    Catch::Contains("Pack '**KV' is used as '*KV' by parameter 'x TUPLE(*KV)': a named pack is used without its "
+	                    "labels in the return type only"));
+	REQUIRE_NOTHROW(FunctionSignature()
+	                    .AddNamedPack("KV")
+	                    .AddParameter("x", structure)
+	                    .SetReturnType(TypeName::TUPLE({TypeName::PACK("KV")}))
+	                    .Verify());
+	REQUIRE_NOTHROW(FunctionSignature()
+	                    .AddNamedPack("KV")
+	                    .AddParameter("x", structure)
+	                    .SetReturnType(TypeName::LIST(TypeName::TUPLE({TypeName::PACK("KV")})))
+	                    .Verify());
+	// into a type that takes types by position
 	REQUIRE_THROWS_WITH(FunctionSignature()
 	                        .AddNamedPack("KV")
 	                        .AddParameter("x", structure)
-	                        .SetReturnType(TypeName::TUPLE({TypeName::PACK("KV")}))
+	                        .SetReturnType(TypeName(Identifier("STRUCT"), {TypeName::PACK("KV")}))
 	                        .Verify(),
-	                    Catch::Contains("Pack '**KV' is used as '*KV'"));
+	                    Catch::Contains("Type STRUCT does not take the types of a pack '*KV'"));
+	// and a pack without labels stays one
+	REQUIRE_THROWS_WITH(FunctionSignature()
+	                        .AddPack("T")
+	                        .AddParameter("x", tuple)
+	                        .SetReturnType(TypeName(Identifier("STRUCT"), {TypeName::NAMED_PACK("T")}))
+	                        .Verify(),
+	                    Catch::Contains("Pack '*T' is used as '**T': its types have no labels"));
 	// and a starred name is a pack the signature declares
 	REQUIRE_THROWS_WITH(FunctionSignature().AddParameter("x", tuple).Verify(),
 	                    Catch::Contains("'*T' is not a pack the signature declares"));
@@ -1854,7 +2179,7 @@ TEST_CASE("A signature that misuses a pack is rejected", "[api][function_binding
 	                    Catch::Contains("Pack '*T' is used as '**(T[])': its types have no labels"));
 	REQUIRE_THROWS_WITH(
 	    FunctionSignature().AddNamedPack("KV").AddArgs("args", TypeName::EXPAND(TypeName::LIST(unstarred_kv))).Verify(),
-	    Catch::Contains("Pack '**KV' is used as '*(KV[])': using a named pack without its labels is not supported"));
+	    Catch::Contains("Pack '**KV' is used as '*(KV[])' by parameter"));
 	// a pattern is expanded as the type of a variadic parameter of its kind: every argument is matched against it
 	REQUIRE_NOTHROW(FunctionSignature().AddPack("T").AddArgs("args", lists).Verify());
 	REQUIRE_NOTHROW(FunctionSignature()
@@ -1922,7 +2247,7 @@ TEST_CASE("A signature that misuses a pack is rejected", "[api][function_binding
 	// a pack is a type variable where ANY may not be used next to one
 	REQUIRE_THROWS_WITH(
 	    FunctionSignature().AddPack("T").AddParameter("x", TypeName::MAP(LogicalType::ANY, tuple)).Verify(),
-	    Catch::Contains("uses ANY and a type variable in the same type"));
+	    Catch::Contains("uses ANY as a part of its type"));
 }
 
 TEST_CASE("A pack holds its types in order, read from a type or given as a list", "[api][function_binding]") {
@@ -1986,9 +2311,9 @@ TEST_CASE("A pack holds its types in order, read from a type or given as a list"
 
 	// the variables of a call hold a pack by the name of its variable
 	FunctionVariables variables;
-	variables.packs.emplace("T", from_tuple);
-	REQUIRE(variables.packs.at("T") == listed);
-	REQUIRE(variables.types.empty());
+	variables.determined.emplace("T", from_tuple);
+	REQUIRE(variables.GetPack("T") == listed);
+	REQUIRE(variables.determined.size() == 1);
 }
 
 //! search(struct TUPLE(*T), entry U) -> BOOLEAN
@@ -2018,22 +2343,22 @@ TEST_CASE("A positional pack is the types of the tuple that is passed as it", "[
 		// a tuple says the pack: its types in order - it is passed as it is, at no cost
 		auto selection = FunctionBinder::SelectFunction(*con.context, search, {tuple, integer});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("T") ==
+		REQUIRE(selection.GetBinding().variables.GetPack("T") ==
 		        TypePack::Positional({LogicalType::INTEGER, LogicalType::VARCHAR}));
-		REQUIRE(selection.GetBinding().variables.types.count("T") == 0);
-		REQUIRE(selection.GetBinding().variables.types.at("U") == integer);
+		REQUIRE(std::holds_alternative<TypePack>(selection.GetBinding().variables.determined.at("T")));
+		REQUIRE(selection.GetBinding().variables.GetType("U") == integer);
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == tuple);
 		REQUIRE(selection.GetBinding().rank.cast_cost == 0);
 		selection = FunctionBinder::SelectFunction(*con.context, search, {nested_tuple, integer});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("T") ==
+		REQUIRE(selection.GetBinding().variables.GetPack("T") ==
 		        TypePack::Positional({tuple, LogicalType::LIST(LogicalType::DOUBLE)}));
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == nested_tuple);
 
 		// a tuple without types says the pack without elements
 		selection = FunctionBinder::SelectFunction(*con.context, search, {empty_tuple, integer});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("T").Count() == 0);
+		REQUIRE(selection.GetBinding().variables.GetPack("T").Count() == 0);
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_tuple);
 
 		// a struct with names is not a tuple: it says nothing about the pack, and cannot be passed - like any type of
@@ -2049,15 +2374,16 @@ TEST_CASE("A positional pack is the types of the tuple that is passed as it", "[
 		// without elements, which costs the change of kind
 		selection = FunctionBinder::SelectFunction(*con.context, search, {empty_struct, integer});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("T").Count() == 0);
+		REQUIRE(selection.GetBinding().variables.GetPack("T").Count() == 0);
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_tuple);
 		REQUIRE(selection.GetBinding().rank.cast_cost == 1);
 
-		// a NULL has no elements to say: it is passed as it is, and costs the cast of a NULL to a tuple
+		// a NULL has no elements to say: the pack no argument says is there without elements, and the NULL is passed
+		// as the tuple without elements, which costs the cast of a NULL to a tuple
 		selection = FunctionBinder::SelectFunction(*con.context, search, {LogicalType::SQLNULL, integer});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.count("T") == 0);
-		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::SQLNULL);
+		REQUIRE(selection.GetBinding().variables.GetPack("T") == TypePack::Positional(vector<LogicalType>()));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_tuple);
 		REQUIRE(selection.GetBinding().rank.cast_cost == 161);
 
 		// an unresolved parameter is what could say the pack: the call is unresolved
@@ -2170,28 +2496,28 @@ TEST_CASE("A named pack is the fields of the struct that is passed as it", "[api
 		// a struct says the pack: its fields in order, each with its name - it is passed as it is, at no cost
 		auto selection = FunctionBinder::SelectFunction(*con.context, keys, {structure});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("KV") ==
+		REQUIRE(selection.GetBinding().variables.GetPack("KV") ==
 		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
-		REQUIRE(selection.GetBinding().variables.types.count("KV") == 0);
+		REQUIRE(std::holds_alternative<TypePack>(selection.GetBinding().variables.determined.at("KV")));
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == structure);
 		REQUIRE(selection.GetBinding().rank.cast_cost == 0);
 		selection = FunctionBinder::SelectFunction(*con.context, keys, {nested_struct});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("KV") ==
+		REQUIRE(selection.GetBinding().variables.GetPack("KV") ==
 		        TypePack::Named({{"s", structure}, {"l", LogicalType::LIST(LogicalType::DOUBLE)}}));
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == nested_struct);
 
 		// a struct without fields says the pack without elements
 		selection = FunctionBinder::SelectFunction(*con.context, keys, {empty_struct});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("KV").Count() == 0);
+		REQUIRE(selection.GetBinding().variables.GetPack("KV").Count() == 0);
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_struct);
 
 		// the labels go to the type that is constructed from the pack: a struct with an alias is a type of its own,
 		// and is cast explicitly to the struct of its fields by a caller that knows the function it calls
 		const auto aliased = structure.WithAlias("pair");
 		auto binding = FunctionBinder::MatchFunction(*con.context, keys.GetSharedOverload(0), {aliased});
-		REQUIRE(binding.variables.packs.at("KV") ==
+		REQUIRE(binding.variables.GetPack("KV") ==
 		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
 		REQUIRE(binding.layout.arguments[0].type == structure);
 		REQUIRE(binding.layout.arguments[0].type.GetAlias().empty());
@@ -2199,7 +2525,7 @@ TEST_CASE("A named pack is the fields of the struct that is passed as it", "[api
 		// a union says the members of UNION(**KV)
 		selection = FunctionBinder::SelectFunction(*con.context, tag, {union_type});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("KV") ==
+		REQUIRE(selection.GetBinding().variables.GetPack("KV") ==
 		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == union_type);
 		selection = FunctionBinder::SelectFunction(*con.context, tag, {structure});
@@ -2210,7 +2536,7 @@ TEST_CASE("A named pack is the fields of the struct that is passed as it", "[api
 		// costs the change of kind
 		selection = FunctionBinder::SelectFunction(*con.context, keys, {empty_tuple});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("KV").Count() == 0);
+		REQUIRE(selection.GetBinding().variables.GetPack("KV").Count() == 0);
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_struct);
 		REQUIRE(selection.GetBinding().rank.cast_cost == 1);
 
@@ -2229,16 +2555,93 @@ TEST_CASE("A named pack is the fields of the struct that is passed as it", "[api
 		             Catch::Contains("Argument 1 of type TUPLE(INTEGER, VARCHAR) cannot be implicitly cast to "
 		                             "STRUCT(**KV)"));
 
-		// a NULL has no fields to say: it is passed as it is, and costs the cast of a NULL to a struct
+		// a NULL has no fields to say: the pack is there without elements, and the NULL is passed as the struct
+		// without fields, which costs the cast of a NULL to a struct
 		selection = FunctionBinder::SelectFunction(*con.context, keys, {LogicalType::SQLNULL});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.count("KV") == 0);
-		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::SQLNULL);
+		REQUIRE(selection.GetBinding().variables.GetPack("KV").Count() == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_struct);
 		REQUIRE(selection.GetBinding().rank.cast_cost == 160);
 
 		// an unresolved parameter is what could say the pack: the call is unresolved
 		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, keys, {LogicalType::UNKNOWN}),
 		                    Catch::Contains("Parameter types could not be resolved"));
+	});
+}
+
+TEST_CASE("A named pack is used without its labels in a return type", "[api][function_binding]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	const auto structure = LogicalType::STRUCT({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}});
+	const auto nested_struct = LogicalType::STRUCT({{"s", structure}, {"l", LogicalType::LIST(LogicalType::DOUBLE)}});
+	const auto empty_struct = LogicalType::STRUCT(child_list_t<LogicalType>());
+	const auto tuple = LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::VARCHAR});
+	const TypeName named_struct(Identifier("STRUCT"), {TypeName::NAMED_PACK("KW")});
+	const auto stripped = TypeName::TUPLE({TypeName::PACK("KW")});
+	// values("struct" STRUCT(**KW)) -> TUPLE(*KW), values("struct" TUPLE(*T)) -> TUPLE(*T)
+	ScalarFunctionSet values("values");
+	values.AddFunction(ScalarFunction(
+	    "values", FunctionSignature().AddNamedPack("KW").AddParameter("struct", named_struct).SetReturnType(stripped),
+	    NoopExec));
+	values.AddFunction(ScalarFunction("values",
+	                                  FunctionSignature()
+	                                      .AddPack("T")
+	                                      .AddParameter("struct", TypeName::TUPLE({TypeName::PACK("T")}))
+	                                      .SetReturnType(TypeName::TUPLE({TypeName::PACK("T")})),
+	                                  NoopExec));
+	REQUIRE(stripped.ToString() == "TUPLE(*KW)");
+	REQUIRE(stripped != TypeName::TUPLE({TypeName::NAMED_PACK("KW")}));
+	REQUIRE(values.GetOverload(0).GetSignature().ToString() == "(\"struct\" STRUCT(**KW)) -> TUPLE(*KW)");
+	// pairs("struct" STRUCT(**KW)) -> TUPLE(*KW)[]
+	ScalarFunctionSet pairs("pairs");
+	pairs.AddFunction(ScalarFunction("pairs",
+	                                 FunctionSignature()
+	                                     .AddNamedPack("KW")
+	                                     .AddParameter("struct", named_struct)
+	                                     .SetReturnType(TypeName::LIST(stripped)),
+	                                 NoopExec));
+
+	con.context->RunFunctionInTransaction([&]() {
+		// the pack keeps its labels, the result is its types in order without them
+		auto selection = FunctionBinder::SelectFunction(*con.context, values, {structure});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+		REQUIRE(selection.GetBinding().variables.GetPack("KW") ==
+		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == structure);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == tuple);
+
+		// nested types are the elements as they are
+		selection = FunctionBinder::SelectFunction(*con.context, values, {nested_struct});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
+		        LogicalType::TUPLE({structure, LogicalType::LIST(LogicalType::DOUBLE)}));
+
+		// the pack of no elements is the tuple of none
+		selection = FunctionBinder::SelectFunction(*con.context, values, {empty_struct});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::TUPLE(vector<LogicalType>()));
+
+		// a NULL says no pack: both are there without elements, and the struct overload is selected at the lower
+		// cost of a NULL as a struct - the result is the tuple of no types
+		selection = FunctionBinder::SelectFunction(*con.context, values, {LogicalType::SQLNULL});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 0);
+		REQUIRE(selection.GetBinding().variables.GetPack("KW").Count() == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == empty_struct);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::TUPLE(vector<LogicalType>()));
+
+		// a tuple selects the overload of its kind and is its own values
+		selection = FunctionBinder::SelectFunction(*con.context, values, {tuple});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().GetOverloadIndex() == 1);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == tuple);
+
+		// inside another type
+		selection = FunctionBinder::SelectFunction(*con.context, pairs, {structure});
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::LIST(tuple));
 	});
 }
 
@@ -2331,12 +2734,6 @@ TEST_CASE("A pattern that a variadic parameter expands is matched by every argum
 	                                   .AddArgs("lists", lists)
 	                                   .SetReturnType(TypeName::LIST(TypeName::TUPLE({TypeName::PACK("T")}))),
 	                               NoopExec));
-	// any_lists(*lists ANY[])
-	ScalarFunctionSet any_lists("any_lists");
-	any_lists.AddFunction(ScalarFunction(
-	    "any_lists",
-	    FunctionSignature().AddArgs("lists", TypeName::LIST(LogicalType::ANY)).SetReturnType(LogicalType::INTEGER),
-	    NoopExec));
 	// tagged(**kwargs **(KV[])) -> STRUCT(**KV)
 	const TypeName named_struct(Identifier("STRUCT"), {TypeName::NAMED_PACK("KV")});
 	ScalarFunctionSet tagged("tagged");
@@ -2369,14 +2766,14 @@ TEST_CASE("A pattern that a variadic parameter expands is matched by every argum
 		// no argument: the pack of no elements
 		auto selection = FunctionBinder::SelectFunction(*con.context, zip, {});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("T").Count() == 0);
+		REQUIRE(selection.GetBinding().variables.GetPack("T").Count() == 0);
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
 		        LogicalType::LIST(LogicalType::TUPLE(vector<LogicalType>())));
 
 		// every argument says its element in the pattern, and is passed as the pattern with it
 		selection = FunctionBinder::SelectFunction(*con.context, zip, {integers, strings});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("T") ==
+		REQUIRE(selection.GetBinding().variables.GetPack("T") ==
 		        TypePack::Positional({LogicalType::INTEGER, LogicalType::VARCHAR}));
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == integers);
 		REQUIRE(selection.GetBinding().layout.arguments[1].type == strings);
@@ -2387,7 +2784,7 @@ TEST_CASE("A pattern that a variadic parameter expands is matched by every argum
 		selection =
 		    FunctionBinder::SelectFunction(*con.context, zip, {integer_array, LogicalType::SQLNULL, empty_list});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("T") ==
+		REQUIRE(selection.GetBinding().variables.GetPack("T") ==
 		        TypePack::Positional({LogicalType::INTEGER, LogicalType::SQLNULL, LogicalType::SQLNULL}));
 		REQUIRE(selection.GetBinding().layout.arguments[0].type == integers);
 		REQUIRE(selection.GetBinding().layout.arguments[1].type == LogicalType::SQLNULL);
@@ -2396,15 +2793,6 @@ TEST_CASE("A pattern that a variadic parameter expands is matched by every argum
 		    ReturnTypeOf(con, selection.GetBinding()) ==
 		    LogicalType::LIST(LogicalType::TUPLE({LogicalType::INTEGER, LogicalType::SQLNULL, LogicalType::SQLNULL})));
 
-		// a call through the pattern ranks like the same call through ANY[]
-		auto through_any =
-		    FunctionBinder::SelectFunction(*con.context, any_lists, {integer_array, LogicalType::SQLNULL, empty_list});
-		REQUIRE(through_any.IsSuccess());
-		REQUIRE(selection.GetBinding().rank == through_any.GetBinding().rank);
-		selection = FunctionBinder::SelectFunction(*con.context, zip, {integers, strings});
-		through_any = FunctionBinder::SelectFunction(*con.context, any_lists, {integers, strings});
-		REQUIRE(selection.GetBinding().rank == through_any.GetBinding().rank);
-
 		// an argument that has no parts for the pattern says no element and cannot be passed
 		for (auto &other : {LogicalType(LogicalType::INTEGER), string_literal, LogicalType::VARIANT()}) {
 			selection = FunctionBinder::SelectFunction(*con.context, zip, {integers, other});
@@ -2412,8 +2800,6 @@ TEST_CASE("A pattern that a variadic parameter expands is matched by every argum
 			REQUIRE(mismatch.GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
 			REQUIRE(mismatch.Cast<FunctionMismatch::IncompatibleArgument>().argument == 1);
 			REQUIRE_THAT(GetErrorMessage(selection), Catch::Contains("cannot be implicitly cast to T[]"));
-			through_any = FunctionBinder::SelectFunction(*con.context, any_lists, {integers, other});
-			REQUIRE(!through_any.IsSuccess());
 		}
 
 		// an unresolved parameter is an element nothing else says
@@ -2424,7 +2810,7 @@ TEST_CASE("A pattern that a variadic parameter expands is matched by every argum
 		vector<pair<Identifier, LogicalType>> named {{"a", integers}, {"b", strings}};
 		selection = FunctionBinder::SelectFunction(*con.context, tagged, FunctionCallArguments({}, named));
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("KV") ==
+		REQUIRE(selection.GetBinding().variables.GetPack("KV") ==
 		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
 		        LogicalType::STRUCT({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
@@ -2434,8 +2820,8 @@ TEST_CASE("A pattern that a variadic parameter expands is matched by every argum
 		const auto second_map = LogicalType::MAP(LogicalType::BIGINT, LogicalType::DATE);
 		selection = FunctionBinder::SelectFunction(*con.context, keyed, {first_map, second_map});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.types.at("K") == LogicalType::BIGINT);
-		REQUIRE(selection.GetBinding().variables.packs.at("V") ==
+		REQUIRE(selection.GetBinding().variables.GetType("K") == LogicalType::BIGINT);
+		REQUIRE(selection.GetBinding().variables.GetPack("V") ==
 		        TypePack::Positional({LogicalType::VARCHAR, LogicalType::DATE}));
 		REQUIRE(selection.GetBinding().layout.arguments[0].type ==
 		        LogicalType::MAP(LogicalType::BIGINT, LogicalType::VARCHAR));
@@ -2501,7 +2887,7 @@ TEST_CASE("A pack on a variadic parameter is the arguments it receives", "[api][
 		// no argument: the pack of no elements
 		auto selection = FunctionBinder::SelectFunction(*con.context, row, {});
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("T").Count() == 0);
+		REQUIRE(selection.GetBinding().variables.GetPack("T").Count() == 0);
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) == LogicalType::TUPLE(vector<LogicalType>()));
 
 		// every argument is one element, and is passed as it: a literal as its default type, a NULL as it is
@@ -2512,7 +2898,7 @@ TEST_CASE("A pack on a variadic parameter is the arguments it receives", "[api][
 		selection =
 		    FunctionBinder::SelectFunction(*con.context, row, {integer_literal, string_literal, LogicalType::SQLNULL});
 		REQUIRE(selection.IsSuccess());
-		auto &elements = selection.GetBinding().variables.packs.at("T");
+		auto &elements = selection.GetBinding().variables.GetPack("T");
 		REQUIRE(elements == TypePack::Positional({LogicalType::INTEGER, LogicalType::VARCHAR, LogicalType::SQLNULL}));
 		for (idx_t i = 0; i < elements.Count(); i++) {
 			REQUIRE(selection.GetBinding().layout.arguments[i].type == elements.GetType(i));
@@ -2537,7 +2923,7 @@ TEST_CASE("A pack on a variadic parameter is the arguments it receives", "[api][
 		vector<pair<Identifier, LogicalType>> named {{"a", integer_literal}, {"b", LogicalType::VARCHAR}};
 		selection = FunctionBinder::SelectFunction(*con.context, pack, FunctionCallArguments({}, named));
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("KV") ==
+		REQUIRE(selection.GetBinding().variables.GetPack("KV") ==
 		        TypePack::Named({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
 		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
 		        LogicalType::STRUCT({{"a", LogicalType::INTEGER}, {"b", LogicalType::VARCHAR}}));
@@ -2561,15 +2947,39 @@ TEST_CASE("A pack on a variadic parameter is the arguments it receives", "[api][
 		named = {{"b", LogicalType::VARCHAR}};
 		selection = FunctionBinder::SelectFunction(*con.context, insert, FunctionCallArguments({structure}, named));
 		REQUIRE(selection.IsSuccess());
-		REQUIRE(selection.GetBinding().variables.packs.at("KV") == TypePack::Named({{"a", LogicalType::INTEGER}}));
-		REQUIRE(selection.GetBinding().variables.packs.at("N") == TypePack::Named({{"b", LogicalType::VARCHAR}}));
+		REQUIRE(selection.GetBinding().variables.GetPack("KV") == TypePack::Named({{"a", LogicalType::INTEGER}}));
+		REQUIRE(selection.GetBinding().variables.GetPack("N") == TypePack::Named({{"b", LogicalType::VARCHAR}}));
 
-		// a pack the return type uses that no argument says is named as it is used
+		// A pack is always determined: one that no argument says - only a NULL is passed as it - is there without
+		// elements, also for the return type
 		selection = FunctionBinder::SelectFunction(*con.context, wrap, {LogicalType::SQLNULL});
-		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::TEMPLATE_UNRESOLVED);
-		REQUIRE_THAT(GetErrorMessage(selection), Catch::Contains("Cannot deduce template type '*T'"));
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.GetPack("T").Count() == 0);
+		REQUIRE(selection.GetBinding().layout.arguments[0].type == LogicalType::TUPLE(vector<LogicalType>()));
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
+		        LogicalType::LIST(LogicalType::TUPLE(vector<LogicalType>())));
 		selection = FunctionBinder::SelectFunction(*con.context, wrap_named, {LogicalType::SQLNULL});
-		REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::TEMPLATE_UNRESOLVED);
-		REQUIRE_THAT(GetErrorMessage(selection), Catch::Contains("Cannot deduce template type '**KV'"));
+		REQUIRE(selection.IsSuccess());
+		REQUIRE(selection.GetBinding().variables.GetPack("KV").Count() == 0);
+		REQUIRE(ReturnTypeOf(con, selection.GetBinding()) ==
+		        LogicalType::LIST(LogicalType::STRUCT(child_list_t<LogicalType>())));
+		// an unresolved parameter is what could say the pack: the call is unresolved
+		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, wrap, {unknown}),
+		                    Catch::Contains(unresolved_message));
+		REQUIRE_THROWS_WITH(FunctionBinder::SelectFunction(*con.context, wrap_named, {unknown}),
+		                    Catch::Contains(unresolved_message));
+		// an argument that does not fit does not leave the pack to its default: it cannot be passed
+		for (auto &other : {LogicalType::LIST(LogicalType::INTEGER), LogicalType(LogicalType::VARIANT()),
+		                    string_literal, LogicalType::STRUCT({{"a", LogicalType::INTEGER}})}) {
+			selection = FunctionBinder::SelectFunction(*con.context, wrap, {other});
+			REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+			REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
+		}
+		for (auto &other : {LogicalType::LIST(LogicalType::INTEGER), LogicalType(LogicalType::VARIANT()),
+		                    string_literal, LogicalType::TUPLE({LogicalType::INTEGER})}) {
+			selection = FunctionBinder::SelectFunction(*con.context, wrap_named, {other});
+			REQUIRE(GetMismatches(selection)[0].GetType() == FunctionMismatch::Type::INCOMPATIBLE_ARGUMENT);
+			REQUIRE(GetMismatches(selection)[0].Cast<FunctionMismatch::IncompatibleArgument>().argument == 0);
+		}
 	});
 }

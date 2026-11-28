@@ -427,6 +427,23 @@ bool FunctionSignature::HasCompleteReturnType() const {
 	return return_type.IsType() && !UsesVariable(*this, return_type.GetTypeName());
 }
 
+bool FunctionSignature::HasDeterminedReturnType() const {
+	if (!return_type.IsType()) {
+		return false;
+	}
+	auto &type = return_type.GetTypeName();
+	for (auto &variable : variables) {
+		if (!variable.IsPack() && type.Contains(variable.GetName())) {
+			return false;
+		}
+	}
+	// what is left uses no variable but packs: it is complete if it uses no ANY either
+	bool uses_any = false;
+	bool uses_type_variable = false;
+	FindAnyAndTypeVariable(*this, type, uses_any, uses_type_variable);
+	return !uses_any;
+}
+
 //! The constraints a signature declares on the type variables a type uses
 static void CollectConstraints(const FunctionSignature &signature, const TypeName &type,
                                vector<LogicalTypeId> &constraints) {
@@ -646,9 +663,12 @@ static void CollectExpandedPacks(const FunctionSignature &signature, const TypeN
 	}
 }
 
-//! The pack of the signature an expansion expands: its pattern uses exactly one, of the kind of the expansion - a
-//! pack that is declared "*T" is expanded as "*T" or in a pattern as "*(T[])", one that is declared "**KV" as "**KV"
-static const TypeVariable &VerifyExpansion(const FunctionSignature &signature, const TypeName &expansion) {
+//! The pack of the signature an expansion expands: its pattern uses exactly one. A pack that is declared "*T" is
+//! expanded as "*T" or in a pattern as "*(T[])", one that is declared "**KV" as "**KV" - and as "*KV", its types
+//! without their labels, in the return type: the argument of a parameter has no labels to say what the pack is.
+//! "parameter" is the parameter the expansion is in the type of, none for the return type
+static const TypeVariable &VerifyExpansion(const FunctionSignature &signature, const TypeName &expansion,
+                                           optional_ptr<const FunctionParameter> parameter) {
 	auto &pattern = expansion.GetPattern();
 	vector<reference<const TypeVariable>> packs;
 	CollectExpandedPacks(signature, expansion, pattern, packs);
@@ -671,10 +691,10 @@ static const TypeVariable &VerifyExpansion(const FunctionSignature &signature, c
 		throw InvalidInputException("Pack '%s' is used as '%s': its types have no labels", pack.ToString(),
 		                            expansion.ToString());
 	}
-	if (used != pack.GetMultiplicity()) {
-		// the one use that is not written as the pack is declared and could be allowed: a named pack without its labels
-		throw InvalidInputException("Pack '%s' is used as '%s': using a named pack without its labels is not supported",
-		                            pack.ToString(), expansion.ToString());
+	if (used != pack.GetMultiplicity() && parameter) {
+		throw InvalidInputException("Pack '%s' is used as '%s' by parameter '%s': a named pack is used without its "
+		                            "labels in the return type only",
+		                            pack.ToString(), expansion.ToString(), parameter->ToString());
 	}
 	return pack;
 }
@@ -696,8 +716,10 @@ static bool TakesPack(const vector<FunctionSignature> &constructors, TypeMultipl
 //! "uses". A pack has exactly one expansion above it. An expansion is the only argument of the type name that takes
 //! it - until a type name can take one after other arguments, or one of each kind - and a built-in type has to take
 //! any number of types the way the expansion gives them. It expands the pack by itself there: a pattern is matched
-//! once for every argument of a variadic parameter, not for every part of a type
-static void VerifyTypeName(const FunctionSignature &signature, const TypeName &type, identifier_map_t<idx_t> &uses) {
+//! once for every argument of a variadic parameter, not for every part of a type. "parameter" is the parameter the
+//! name is the type of, none for the return type
+static void VerifyTypeName(const FunctionSignature &signature, const TypeName &type,
+                           optional_ptr<const FunctionParameter> parameter, identifier_map_t<idx_t> &uses) {
 	if (!type.HasArguments()) {
 		auto variable =
 		    type.GetBuiltinType() == LogicalTypeId::INVALID ? signature.FindVariable(type.GetName()) : nullptr;
@@ -714,10 +736,10 @@ static void VerifyTypeName(const FunctionSignature &signature, const TypeName &t
 		}
 		auto &use = argument.GetType();
 		if (!use.IsExpansion()) {
-			VerifyTypeName(signature, use, uses);
+			VerifyTypeName(signature, use, parameter, uses);
 			continue;
 		}
-		auto &pack = VerifyExpansion(signature, use);
+		auto &pack = VerifyExpansion(signature, use, parameter);
 		uses[pack.GetName()]++;
 		if (use.GetPattern().HasArguments()) {
 			throw InvalidInputException("'%s' expands a pattern in '%s': a pattern is only expanded as the type of a "
@@ -741,12 +763,12 @@ void FunctionSignature::VerifyVariableUses() const {
 	for (const auto &param : parameters) {
 		auto &type = param.GetTypeName();
 		if (!type.IsExpansion()) {
-			VerifyTypeName(*this, type, uses);
+			VerifyTypeName(*this, type, &param, uses);
 			continue;
 		}
 		// an expansion by itself is what a variadic parameter of its kind receives: every argument is passed as the
 		// pattern, which is the pack itself or a type that uses it
-		auto &pack = VerifyExpansion(*this, type);
+		auto &pack = VerifyExpansion(*this, type, &param);
 		const bool is_named = type.GetExpansionKind() == TypeMultiplicity::NAMED_PACK;
 		const auto variadic = is_named ? FunctionParameterKind::VAR_KEYWORD : FunctionParameterKind::VAR_POSITIONAL;
 		if (param.GetKind() != variadic) {
@@ -766,11 +788,11 @@ void FunctionSignature::VerifyVariableUses() const {
 	if (return_type.IsType()) {
 		auto &type = return_type.GetTypeName();
 		if (type.IsExpansion()) {
-			VerifyExpansion(*this, type);
+			VerifyExpansion(*this, type, nullptr);
 			throw InvalidInputException("The return type '%s' is not a type: a pack is an argument of a type",
 			                            type.ToString());
 		}
-		VerifyTypeName(*this, type, uses);
+		VerifyTypeName(*this, type, nullptr, uses);
 	}
 	for (auto &variable : variables) {
 		if (variable.IsPack() && uses.find(variable.GetName()) == uses.end()) {
@@ -792,14 +814,15 @@ void FunctionSignature::Verify() const {
 	// Every use of a variable is written as the variable is declared, and a pack is used where one can be
 	VerifyVariableUses();
 
-	// ANY is the type of the argument itself, which a type variable that the other arguments determine is not
+	// ANY is the type of the argument itself: the whole type of a parameter, not a part of one
 	for (const auto &param : parameters) {
+		auto &type = param.GetTypeName();
 		bool uses_any = false;
 		bool uses_type_variable = false;
-		FindAnyAndTypeVariable(*this, param.GetTypeName(), uses_any, uses_type_variable);
-		if (uses_any && uses_type_variable) {
-			throw InvalidInputException("Parameter '%s' uses ANY and a type variable in the same type - declare a "
-			                            "type variable instead of ANY",
+		FindAnyAndTypeVariable(*this, type, uses_any, uses_type_variable);
+		if (uses_any && (type.IsExpansion() || type.HasArguments())) {
+			throw InvalidInputException("Parameter '%s' uses ANY as a part of its type - declare a type variable "
+			                            "instead of ANY",
 			                            param.ToString());
 		}
 	}
