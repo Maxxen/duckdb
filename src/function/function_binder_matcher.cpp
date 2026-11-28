@@ -372,8 +372,7 @@ private:
 	//! The passes, in their order
 	Result<ArgumentLayout, MatchFailure> Layout() const;
 	Result<CollectedArguments, MatchFailure> Collect(const ArgumentLayout &layout, VariableTable variables) const;
-	Result<FunctionVariables, MatchFailure> Infer(const ArgumentLayout &layout,
-	                                              const CollectedArguments &collected) const;
+	Result<FunctionVariables, MatchFailure> Infer(const ArgumentLayout &layout, const VariableTable &variables) const;
 	Result<PassedArguments, MatchFailure> Substitute(const ArgumentLayout &layout, const CollectedArguments &collected,
 	                                                 const FunctionVariables &resolved) const;
 
@@ -382,8 +381,6 @@ private:
 	                          VariableTable &variables) const;
 	bool CollectCandidates(const TypeName &name, const LogicalType &type, idx_t argument,
 	                       VariableTable &variables) const;
-	MatchFailure GetUnsaidVariable(const ArgumentLayout &layout, const CollectedArguments &collected,
-	                               const FunctionVariables &resolved, const TypeVariable &variable) const;
 	optional<LogicalType> BindType(const TypeName &name, const FunctionVariables &resolved) const;
 	optional<int64_t> GetPassCost(const TypeName &name, const LogicalType &arg_type, const optional<LogicalType> &type,
 	                              bool fits, bool is_variable) const;
@@ -674,8 +671,9 @@ Result<CollectedArguments, MatchFailure> OverloadMatcher::Collect(const Argument
 
 	// The pack a variadic parameter expands: every argument the parameter receives is one element, the type it says
 	// the pack is in the pattern - itself for "*T", the type of its elements for "*(T[])" - with its name as the label
-	// for "**kwargs". Without an argument it is the pack of no elements. It is not said if an argument does not say
-	// its element: an unresolved parameter, or an argument that has no parts for the pattern
+	// for "**kwargs". An argument that has no parts for the pattern says no element: its element is the NULL type,
+	// like a variable that no argument says, see Infer. Without an argument it is the pack of no elements. It is
+	// not said if an unresolved parameter is what says an element
 	for (auto &variadic_idx : {signature.GetArgsIndex(), signature.GetKwargsIndex()}) {
 		if (!variadic_idx.IsValid()) {
 			continue;
@@ -686,26 +684,33 @@ Result<CollectedArguments, MatchFailure> OverloadMatcher::Collect(const Argument
 		}
 		auto &pack = GetExpandedPack(variables, variadic_name);
 		const bool is_named = variadic_name.GetExpansionKind() == TypeMultiplicity::NAMED_PACK;
-		idx_t argument_count = 0;
-		for (auto &argument : layout.arguments) {
-			argument_count += argument.parameter_index == variadic_idx.GetIndex() ? 1 : 0;
-		}
 		vector<LogicalType> types;
 		child_list_t<LogicalType> labelled_types;
-		for (auto &candidate : pack.candidates) {
-			auto said_type = TypeValue::GetType(candidate.value);
-			if (said_type.id() == LogicalTypeId::UNKNOWN) {
+		bool is_unresolved = false;
+		idx_t candidate_idx = 0;
+		for (idx_t i = 0; i < layout.arguments.size(); i++) {
+			if (layout.arguments[i].parameter_index != variadic_idx.GetIndex()) {
 				continue;
 			}
-			auto type = LogicalType::NormalizeType(said_type);
+			// the pattern uses the pack once, see FunctionSignature::Verify: an argument says one element or none
+			LogicalType type = LogicalType::SQLNULL;
+			if (candidate_idx < pack.candidates.size() && pack.candidates[candidate_idx].argument == i) {
+				auto said_type = TypeValue::GetType(pack.candidates[candidate_idx].value);
+				candidate_idx++;
+				if (said_type.id() == LogicalTypeId::UNKNOWN) {
+					is_unresolved = true;
+					continue;
+				}
+				type = LogicalType::NormalizeType(said_type);
+			}
 			if (is_named) {
-				auto argument_idx = layout.arguments[candidate.argument].argument_index.GetIndex();
+				auto argument_idx = layout.arguments[i].argument_index.GetIndex();
 				labelled_types.emplace_back(call.GetArgument(argument_idx).name, std::move(type));
 			} else {
 				types.push_back(std::move(type));
 			}
 		}
-		if (types.size() + labelled_types.size() == argument_count) {
+		if (!is_unresolved) {
 			pack.elements =
 			    is_named ? TypePack::Named(std::move(labelled_types)) : TypePack::Positional(std::move(types));
 		}
@@ -729,29 +734,16 @@ static bool TryUnifyTypes(optional_ptr<ClientContext> context, const LogicalType
 //! the promotion a NULL and an unresolved parameter take the other type, so a type variable is the type of a NULL if
 //! only NULLs are passed as it. A value variable takes the value the other arguments say in the same way, and is a
 //! NULL of its values if only NULLs say it: no type is made of that, see Substitute. A pack is the elements the one
-//! parameter that uses it says, see Collect - there without elements if a NULL is passed as it, so a pack is
-//! always determined unless an argument does not fit. A variable that is left to an unresolved parameter - no other
+//! parameter that uses it says, see Collect - there without elements if a NULL is passed as it. A variable that no
+//! argument says is what one is that only NULLs say: the NULL type, a NULL of its values, the pack without elements -
+//! also where the argument that is passed as it has no parts for the type, e.g. a map that is passed as T[]: whether
+//! that argument can be passed is up to Substitute. A variable that is left to an unresolved parameter - no other
 //! argument says what it is - leaves the call unresolved, whatever the other overloads are and whether or not the
 //! other arguments can be passed. Returns what the variables are resolved to, every one the signature declares - or
-//! why not: the arguments say different things about a variable, what they say a constrained variable is is not of
-//! its kind, or no argument says what a variable is, see GetUnsaidVariable
-//! Why a variable is not resolved, when no argument says what it is. An argument that is passed as a type that uses
-//! such a variable has no parts for that type, e.g. a map that is passed as T[]: it cannot be passed, and the failure
-//! is the one of passing the arguments, see Substitute. Without such an argument nothing is passed as the variable:
-//! it is not determined
-MatchFailure OverloadMatcher::GetUnsaidVariable(const ArgumentLayout &layout, const CollectedArguments &collected,
-                                                const FunctionVariables &resolved, const TypeVariable &variable) const {
-	auto passed = Substitute(layout, collected, resolved);
-	if (!passed) {
-		return std::move(passed.GetError());
-	}
-	return MatchFailure {
-	    0, FunctionMismatch::TemplateUnresolved {variable.GetName().GetIdentifierName(), variable.IsValue()}};
-}
-
+//! why not: the arguments say different things about a variable, or what they say a constrained variable is is not
+//! of its kind
 Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLayout &layout,
-                                                               const CollectedArguments &collected) const {
-	auto &variables = collected.variables;
+                                                               const VariableTable &variables) const {
 	auto context = cache.GetContext();
 	auto &arguments = layout.arguments;
 	FunctionVariables resolved;
@@ -769,10 +761,15 @@ Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLay
 			continue;
 		}
 		if (declaration.IsPack()) {
-			// a pack that no argument says: an unresolved parameter is what could say it
+			// a pack that no argument says is left to an unresolved parameter that could say it, else it is empty
+			bool is_open = false;
 			for (auto &candidate : variable.candidates) {
-				is_unresolved = is_unresolved || TypeValue::GetType(candidate.value).id() == LogicalTypeId::UNKNOWN;
+				is_open = is_open || TypeValue::GetType(candidate.value).id() == LogicalTypeId::UNKNOWN;
 			}
+			if (!is_open) {
+				resolved.determined.emplace(declaration.GetName(), TypePack::Positional(vector<LogicalType>()));
+			}
+			is_unresolved = is_unresolved || is_open;
 			continue;
 		}
 
@@ -791,15 +788,15 @@ Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLay
 					return Err(MatchFailure {0, std::move(conflict)});
 				}
 			}
-			if (value) {
-				resolved.determined.emplace(declaration.GetName(), *value);
-			}
+			// one that no argument says is a NULL of its values
+			resolved.determined.emplace(declaration.GetName(),
+			                            value ? *value : Value(ValueVariableType(declaration)));
 			continue;
 		}
 
 		// The arguments say what the type is in their order: the first one sets it, and every other type is promoted
-		// with it. A NULL or an unresolved parameter takes the other type
-		LogicalType type;
+		// with it. A NULL or an unresolved parameter takes the other type, and without an argument it is the NULL type
+		LogicalType type = LogicalType::SQLNULL;
 		// what a conflict lists: the first type, then every type that changed it and what it was promoted to with it
 		LogicalType first_type;
 		vector<LogicalType> promotions;
@@ -829,18 +826,14 @@ Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLay
 				type = std::move(promoted);
 			}
 		}
-		if (is_said) {
-			resolved.determined.emplace(declaration.GetName(), std::move(type));
-		}
+		resolved.determined.emplace(declaration.GetName(), std::move(type));
 	}
 
 	// The types are final, once every variable is promoted without a conflict
-	optional_ptr<const TypeVariable> unsaid;
 	for (auto &declaration : signature.GetVariables()) {
 		auto entry = resolved.determined.find(declaration.GetName());
 		if (entry == resolved.determined.end()) {
-			// no argument says it: the first such variable is reported, unless the call is unresolved
-			unsaid = unsaid ? unsaid : optional_ptr<const TypeVariable>(declaration);
+			// a pack that is left to an unresolved parameter
 			continue;
 		}
 		if (declaration.IsValue() && std::get<Value>(entry->second).type().id() == LogicalTypeId::UNKNOWN) {
@@ -862,9 +855,6 @@ Result<FunctionVariables, MatchFailure> OverloadMatcher::Infer(const ArgumentLay
 	}
 	if (is_unresolved) {
 		throw ParameterNotResolvedException();
-	}
-	if (unsaid) {
-		return Err(GetUnsaidVariable(layout, collected, resolved, *unsaid));
 	}
 
 	return std::move(resolved);
@@ -968,8 +958,7 @@ optional<int64_t> OverloadMatcher::GetPassCost(const TypeName &name, const Logic
 //! argument of the call then adds what passing it costs, see GetPassCost, and what the type of its parameter
 //! declares to the rank. A default is not ranked, and nothing is when the arguments are cast explicitly: such an
 //! argument only needs a type. Returns why not: the first argument that cannot be passed and how many there are.
-//! Every variable is resolved, see Infer - which reports the arguments that cannot be passed with the variables that
-//! are, where one is not: no type is made of that one
+//! Every variable is resolved, see Infer
 Result<PassedArguments, MatchFailure> OverloadMatcher::Substitute(const ArgumentLayout &layout,
                                                                   const CollectedArguments &collected,
                                                                   const FunctionVariables &resolved) const {
@@ -985,8 +974,6 @@ Result<PassedArguments, MatchFailure> OverloadMatcher::Substitute(const Argument
 	optional<FunctionVariables> element_variables;
 	optional_ptr<const Identifier> pack_name;
 	idx_t first_argument = 0;
-	// only where Infer reports why a variable is not resolved, see GetUnsaidVariable
-	const bool has_unsaid = resolved.determined.size() < signature.GetVariables().size();
 	for (idx_t i = 0; i < layout.arguments.size(); i++) {
 		auto &argument = layout.arguments[i];
 		auto &parameter_name = signature.GetParameter(argument.parameter_index).GetTypeName();
@@ -997,19 +984,10 @@ Result<PassedArguments, MatchFailure> OverloadMatcher::Substitute(const Argument
 			first_argument = i;
 			pack_name = nullptr;
 		}
-		bool is_unsaid = false;
-		for (idx_t variable_idx = 0; has_unsaid && variable_idx < signature.GetVariables().size(); variable_idx++) {
-			auto &variable_name = signature.GetVariables()[variable_idx].GetName();
-			is_unsaid = is_unsaid || (!resolved.IsDetermined(variable_name) && name.Contains(variable_name));
-		}
 		optional<LogicalType> type;
-		if (is_unsaid) {
-			// no type is made of a variable that is not resolved
-		} else if (name.IsBuiltinType(LogicalTypeId::ANY)) {
+		if (name.IsBuiltinType(LogicalTypeId::ANY)) {
 			// throws for an unresolved parameter
 			type = LogicalType::NormalizeType(arg_type);
-		} else if (parameter_name.IsExpansion() && is_null && name.HasArguments()) {
-			// a NULL has no parts for the pattern: it is passed as it is
 		} else if (parameter_name.IsExpansion()) {
 			if (!pack_name) {
 				pack_name = GetExpandedPack(variables, parameter_name).declaration.get().GetName();
@@ -1081,7 +1059,7 @@ Result<FunctionBinding, MatchFailure> OverloadMatcher::Match() const {
 	if (!collected) {
 		return Err(std::move(collected.GetError()));
 	}
-	auto resolved = Infer(*layout, *collected);
+	auto resolved = Infer(*layout, collected->variables);
 	if (!resolved) {
 		return Err(std::move(resolved.GetError()));
 	}

@@ -49,9 +49,6 @@ void ArrayValueFunction(DataChunk &args, ExpressionState &state, Vector &result)
 //! An array of the type the arguments unify into, with one element for each argument
 LogicalType ArrayValueReturnType(const ResolveReturnTypeInput &input) {
 	const auto argument_count = input.GetArgumentCount();
-	if (argument_count == 0) {
-		throw InvalidInputException("array_value requires at least one argument");
-	}
 	if (argument_count > ArrayType::MAX_ARRAY_SIZE) {
 		throw OutOfRangeException("Array size exceeds maximum allowed size");
 	}
@@ -77,6 +74,7 @@ ScalarFunction ArrayValueFun::GetFunction() {
 	ScalarFunction fun("array_value",
 	                   FunctionSignature()
 	                       .AddVariable("T")
+	                       .AddPositionalOnly("value", element_type)
 	                       .AddArgs("args", element_type)
 	                       .SetReturnType(ReturnType::ANY(ArrayValueReturnType)),
 	                   ArrayValueFunction, VariableReturnBindData::Bind, ArrayValueStats);
